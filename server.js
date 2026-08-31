@@ -1,1 +1,1 @@
-require('./dist/main');
+require('./dist/src/main');
