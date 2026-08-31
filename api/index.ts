@@ -1,7 +1,7 @@
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createApp } from './create-app';
+import { createApp } from '../dist/create-app';
 
 let server: express.Express | undefined;
 
