@@ -86,7 +86,7 @@ export class TutoringService {
 
     await this.prisma.tutoringSession.update({
       where: { id: session.id },
-      data: { messages: messages as Prisma.InputJsonValue },
+      data: { messages: messages },
     });
 
     return { reply, sessionId: session.id };

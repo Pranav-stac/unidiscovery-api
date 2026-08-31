@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Put } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UCASApplicationStatus } from '@prisma/client';
 import {
   IsArray,

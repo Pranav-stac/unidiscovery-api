@@ -358,7 +358,7 @@ export class DiagnosticsService {
         metadata: {
           ...existingMeta,
           currentStepId: nextStepId ?? stepId,
-        } as Prisma.InputJsonValue,
+        },
       },
     });
   }
@@ -380,7 +380,7 @@ export class DiagnosticsService {
         metadata: {
           ...existingMeta,
           currentStepId: stepId,
-        } as Prisma.InputJsonValue,
+        },
       },
     });
   }

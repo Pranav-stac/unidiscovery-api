@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ApplicationDocumentType, Prisma } from '@prisma/client';
+import { ApplicationDocumentType } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { ProfileContextService } from '../../../common/services/profile-context.service';
@@ -54,7 +54,7 @@ export class ApplicationsService {
         metadata: {
           prompt,
           generatedAt: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
+        },
       },
     });
   }

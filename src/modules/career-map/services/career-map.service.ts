@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { StudentProfile } from '@prisma/client';
+import { Prisma, StudentProfile } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { ProfileContextService } from '../../../common/services/profile-context.service';
@@ -74,7 +74,7 @@ export class CareerMapService {
         userId,
         version,
         grade: ctx.isCollege ? ctx.collegeYear : ctx.schoolGrade,
-        mapData: mapData as object,
+        mapData: mapData as Prisma.InputJsonValue,
       },
     });
   }
@@ -142,7 +142,6 @@ Return JSON with 5-7 milestones.`;
     profile: StudentProfile,
     ctx: StudentContext,
   ): string {
-    const grade = ctx.schoolGrade ?? 9;
     return `Create a career-years map for a SCHOOL student currently in ${ctx.levelLabel}, stream ${profile.stream ?? 'undecided'}.
 Target degree: ${profile.targetDegree ?? 'undecided'}.
 Countries: ${profile.targetCountries?.join(', ') || 'global'}.

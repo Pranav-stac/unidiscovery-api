@@ -205,7 +205,9 @@ export function getRegistrySteps(
     ? (classGroup ?? 'college-y2')
     : (classGroup ?? '9-10');
 
-  return REGISTRY.filter((q) => q.classGroups.includes(group)).map(
-    ({ classGroups: _cg, ...step }) => step,
-  );
+  return REGISTRY.filter((q) => q.classGroups.includes(group)).map((q) => {
+    const { classGroups, ...step } = q;
+    void classGroups;
+    return step;
+  });
 }

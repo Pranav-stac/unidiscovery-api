@@ -14,6 +14,7 @@ import { UsersRepository } from '../../../infrastructure/database/repositories/u
 import { ProfilesRepository } from '../../../infrastructure/database/repositories/profiles.repository';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 import { FirebaseService } from '../../../infrastructure/firebase/firebase.service';
+import type { DecodedIdToken } from 'firebase-admin/auth';
 import { LoginDto, RegisterDto } from '../dto/auth.dto';
 
 export interface AuthTokens {
@@ -130,7 +131,7 @@ export class AuthService implements OnModuleInit {
   }
 
   async loginWithGoogle(idToken: string): Promise<AuthResponse> {
-    let decoded;
+    let decoded: DecodedIdToken;
     try {
       decoded = await this.firebaseService.verifyIdToken(idToken);
     } catch {
@@ -147,9 +148,13 @@ export class AuthService implements OnModuleInit {
       const passwordHash = await this.hashPassword(
         randomBytes(32).toString('hex'),
       );
+      const displayName =
+        typeof decoded.name === 'string' && decoded.name.trim().length > 0
+          ? decoded.name.trim()
+          : email.split('@')[0];
       user = await this.usersRepository.create({
         email,
-        name: decoded.name || email.split('@')[0],
+        name: displayName,
         passwordHash,
         role: UserRole.STUDENT,
       });

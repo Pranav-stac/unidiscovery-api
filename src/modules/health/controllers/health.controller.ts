@@ -33,7 +33,7 @@ export class HealthController {
     }
 
     return {
-      status: database === 'ok' && redis === 'ok' ? 'healthy' : 'degraded',
+      status: database === 'ok' ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
       services: { database, redis },
     };

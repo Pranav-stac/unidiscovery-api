@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { JobAssetType, Prisma } from '@prisma/client';
+import { JobAssetType } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { ProfileContextService } from '../../../common/services/profile-context.service';
@@ -56,7 +56,7 @@ export class JobReadinessService {
           userId,
           type,
           title: 'My CV',
-          content: cvContent as Prisma.InputJsonValue,
+          content: cvContent,
         },
       });
     }
@@ -85,7 +85,7 @@ export class JobReadinessService {
         userId,
         type,
         title: 'LinkedIn Profile',
-        content: linkedInContent as Prisma.InputJsonValue,
+        content: linkedInContent,
       },
     });
   }
