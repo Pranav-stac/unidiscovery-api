@@ -1,9 +1,8 @@
+import 'reflect-metadata';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createApp } = require('../dist/create-app') as typeof import('../dist/create-app');
+import { createApp } from '../src/create-app';
 
 let server: express.Express | undefined;
 let initError: Error | undefined;
@@ -33,7 +32,6 @@ export default async function handler(
       JSON.stringify({
         statusCode: 500,
         message: initError.message,
-        stack: process.env.NODE_ENV === 'production' ? undefined : initError.stack,
       }),
     );
   }
