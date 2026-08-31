@@ -1,19 +1,40 @@
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createApp } from '../dist/create-app';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createApp } = require('../dist/create-app') as typeof import('../dist/create-app');
 
 let server: express.Express | undefined;
+let initError: Error | undefined;
 
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,
 ): Promise<unknown> {
-  if (!server) {
-    const expressApp = express();
-    await createApp(new ExpressAdapter(expressApp));
-    server = expressApp;
-  }
+  try {
+    if (initError) {
+      throw initError;
+    }
 
-  return server(req, res);
+    if (!server) {
+      const expressApp = express();
+      await createApp(new ExpressAdapter(expressApp));
+      server = expressApp;
+    }
+
+    return server(req, res);
+  } catch (error) {
+    initError = error instanceof Error ? error : new Error(String(error));
+    console.error('API bootstrap failed:', initError);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(
+      JSON.stringify({
+        statusCode: 500,
+        message: initError.message,
+        stack: process.env.NODE_ENV === 'production' ? undefined : initError.stack,
+      }),
+    );
+  }
 }
