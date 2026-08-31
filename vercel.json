@@ -1,16 +1,25 @@
 {
+  "version": 2,
   "buildCommand": "npm run vercel-build",
   "installCommand": "npm install",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api"
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "dist/**",
+          "node_modules/.prisma/**",
+          "node_modules/@prisma/client/**"
+        ],
+        "maxDuration": 30
+      }
     }
   ],
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 30,
-      "memory": 1024
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
     }
-  }
+  ]
 }
