@@ -36,7 +36,7 @@ export const envValidationSchema = Joi.object({
 export default () => ({
   nodeEnv: process.env.NODE_ENV,
   api: {
-    port: Number(process.env.API_PORT ?? 4000),
+    port: Number(process.env.PORT ?? process.env.API_PORT ?? 4000),
     prefix: process.env.API_PREFIX ?? 'api/v1',
     corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(
       ',',
