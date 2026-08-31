@@ -30,6 +30,7 @@ export const envValidationSchema = Joi.object({
   ADMIN_PASSWORD: Joi.string().min(8).default('ChangeMe123!'),
   ADMIN_NAME: Joi.string().default('Platform Admin'),
   FIREBASE_SERVICE_ACCOUNT_PATH: Joi.string().allow('').default(''),
+  FIREBASE_SERVICE_ACCOUNT_JSON: Joi.string().allow('').default(''),
 });
 
 export default () => ({
@@ -83,5 +84,6 @@ export default () => ({
   },
   firebase: {
     serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? '',
+    serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '',
   },
 });

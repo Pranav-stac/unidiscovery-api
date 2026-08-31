@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TutoringTestType } from '@prisma/client';
 import { IsEnum, IsString } from 'class-validator';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';

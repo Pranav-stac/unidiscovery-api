@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ActivityType } from '@prisma/client';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';

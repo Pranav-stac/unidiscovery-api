@@ -27,9 +27,12 @@ export class CollegeMatchingService {
     profile: StudentProfile,
     college: CollegeMatchInput,
   ): CollegeMatchResult {
-    const meta =
-      college.metadata ??
-      ({ fields: [], programs: [], streams: [], tags: [] } as CollegeMetadata);
+    const meta = college.metadata ?? {
+      fields: [],
+      programs: [],
+      streams: [],
+      tags: [],
+    };
     const transcript = (profile.transcriptData ?? {}) as { cgpa?: number };
     const goals = (profile.goals ?? {}) as Record<string, unknown>;
     const studentCgpa =

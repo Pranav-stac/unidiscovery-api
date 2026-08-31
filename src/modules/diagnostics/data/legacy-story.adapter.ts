@@ -225,7 +225,7 @@ export function buildStoryDiagnosticSteps(
   }
 
   const chapterCount = uniqueSections.length + 1;
-  steps.forEach((s, i) => {
+  steps.forEach((s) => {
     if (s.chapter) {
       const idx = uniqueSections.indexOf(s.chapter);
       s.chapterIndex =

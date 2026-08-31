@@ -21,13 +21,23 @@ export class FirebaseService implements OnModuleInit {
       return;
     }
 
+    const serviceAccountJson = this.configService.get<string>(
+      'firebase.serviceAccountJson',
+    );
+    if (serviceAccountJson) {
+      const serviceAccount = JSON.parse(serviceAccountJson) as ServiceAccount;
+      initializeApp({
+        credential: cert(serviceAccount),
+      });
+      this.logger.log('Firebase Admin initialized from env JSON');
+      return;
+    }
+
     const serviceAccountPath = this.configService.get<string>(
       'firebase.serviceAccountPath',
     );
     if (!serviceAccountPath) {
-      this.logger.warn(
-        'FIREBASE_SERVICE_ACCOUNT_PATH not set — Google login disabled',
-      );
+      this.logger.warn('Firebase credentials not set — Google login disabled');
       return;
     }
 
@@ -40,7 +50,7 @@ export class FirebaseService implements OnModuleInit {
       credential: cert(serviceAccount),
     });
 
-    this.logger.log('Firebase Admin initialized');
+    this.logger.log('Firebase Admin initialized from file');
   }
 
   async verifyIdToken(idToken: string): Promise<DecodedIdToken> {

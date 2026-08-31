@@ -27,7 +27,9 @@ export class AuthController {
 
   @Public()
   @Post('google')
-  @ApiOperation({ summary: 'Login or register with Google via Firebase' })
+  @ApiOperation({
+    summary: 'Sign in with Google — creates an account automatically if new',
+  })
   loginWithGoogle(@Body() dto: GoogleAuthDto) {
     return this.authService.loginWithGoogle(dto.idToken);
   }
