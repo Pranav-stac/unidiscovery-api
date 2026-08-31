@@ -7,7 +7,7 @@ services:
     repo: https://github.com/Pranav-stac/unidiscovery-api
     branch: main
     buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: node dist/main.js
+    startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
