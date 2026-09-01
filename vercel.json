@@ -12,7 +12,7 @@
           "node_modules/.prisma/**",
           "node_modules/@prisma/client/**"
         ],
-        "maxDuration": 30
+        "maxDuration": 60
       }
     }
   ],
