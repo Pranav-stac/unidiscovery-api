@@ -1,5 +1,7 @@
 import * as Joi from 'joi';
 
+const trimEnv = (value?: string) => value?.trim();
+
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
@@ -34,56 +36,58 @@ export const envValidationSchema = Joi.object({
 });
 
 export default () => ({
-  nodeEnv: process.env.NODE_ENV,
+  nodeEnv: trimEnv(process.env.NODE_ENV),
   api: {
-    port: Number(process.env.PORT ?? process.env.API_PORT ?? 4000),
-    prefix: process.env.API_PREFIX ?? 'api/v1',
-    corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(
-      ',',
-    ),
+    port: Number(process.env.PORT ?? trimEnv(process.env.API_PORT) ?? 4000),
+    prefix: trimEnv(process.env.API_PREFIX) ?? 'api/v1',
+    corsOrigins: (trimEnv(process.env.CORS_ORIGINS) ?? 'http://localhost:3000')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
   },
   database: {
-    url: process.env.DATABASE_URL,
-    directUrl: process.env.DIRECT_URL,
+    url: trimEnv(process.env.DATABASE_URL),
+    directUrl: trimEnv(process.env.DIRECT_URL),
   },
   redis: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: Number(process.env.REDIS_PORT ?? 6379),
-    password: process.env.REDIS_PASSWORD || undefined,
-    ttlSeconds: Number(process.env.REDIS_TTL_SECONDS ?? 300),
-    keyPrefix: process.env.REDIS_KEY_PREFIX ?? 'ai-platform:',
+    host: trimEnv(process.env.REDIS_HOST) ?? 'localhost',
+    port: Number(trimEnv(process.env.REDIS_PORT) ?? 6379),
+    password: trimEnv(process.env.REDIS_PASSWORD) || undefined,
+    ttlSeconds: Number(trimEnv(process.env.REDIS_TTL_SECONDS) ?? 300),
+    keyPrefix: trimEnv(process.env.REDIS_KEY_PREFIX) ?? 'ai-platform:',
   },
   jwt: {
-    secret: process.env.JWT_SECRET,
-    expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
-    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '30d',
+    secret: trimEnv(process.env.JWT_SECRET),
+    expiresIn: trimEnv(process.env.JWT_EXPIRES_IN) ?? '7d',
+    refreshExpiresIn: trimEnv(process.env.JWT_REFRESH_EXPIRES_IN) ?? '30d',
   },
   bcrypt: {
-    saltRounds: Number(process.env.BCRYPT_SALT_ROUNDS ?? 12),
+    saltRounds: Number(trimEnv(process.env.BCRYPT_SALT_ROUNDS) ?? 12),
   },
   gemini: {
-    apiKey: process.env.GEMINI_API_KEY ?? '',
-    model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
-    embeddingModel: process.env.GEMINI_EMBEDDING_MODEL ?? 'text-embedding-004',
+    apiKey: trimEnv(process.env.GEMINI_API_KEY) ?? '',
+    model: trimEnv(process.env.GEMINI_MODEL) ?? 'gemini-2.5-flash',
+    embeddingModel:
+      trimEnv(process.env.GEMINI_EMBEDDING_MODEL) ?? 'text-embedding-004',
   },
   throttle: {
-    ttl: Number(process.env.THROTTLE_TTL ?? 60),
-    limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+    ttl: Number(trimEnv(process.env.THROTTLE_TTL) ?? 60),
+    limit: Number(trimEnv(process.env.THROTTLE_LIMIT) ?? 100),
   },
   upload: {
-    maxSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 10),
+    maxSizeMb: Number(trimEnv(process.env.MAX_UPLOAD_SIZE_MB) ?? 10),
   },
   pagination: {
-    defaultPageSize: Number(process.env.DEFAULT_PAGE_SIZE ?? 20),
-    maxPageSize: Number(process.env.MAX_PAGE_SIZE ?? 100),
+    defaultPageSize: Number(trimEnv(process.env.DEFAULT_PAGE_SIZE) ?? 20),
+    maxPageSize: Number(trimEnv(process.env.MAX_PAGE_SIZE) ?? 100),
   },
   admin: {
-    email: process.env.ADMIN_EMAIL ?? 'admin@example.com',
-    password: process.env.ADMIN_PASSWORD ?? 'ChangeMe123!',
-    name: process.env.ADMIN_NAME ?? 'Platform Admin',
+    email: trimEnv(process.env.ADMIN_EMAIL) ?? 'admin@example.com',
+    password: trimEnv(process.env.ADMIN_PASSWORD) ?? 'ChangeMe123!',
+    name: trimEnv(process.env.ADMIN_NAME) ?? 'Platform Admin',
   },
   firebase: {
-    serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? '',
-    serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '',
+    serviceAccountPath: trimEnv(process.env.FIREBASE_SERVICE_ACCOUNT_PATH) ?? '',
+    serviceAccountJson: trimEnv(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) ?? '',
   },
 });
