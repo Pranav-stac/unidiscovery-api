@@ -44,6 +44,13 @@ export class UsersRepository {
     });
   }
 
+  async updatePassword(id: string, passwordHash: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  }
+
   async softDelete(id: string): Promise<UserEntity> {
     return this.prisma.user.update({
       where: { id },
