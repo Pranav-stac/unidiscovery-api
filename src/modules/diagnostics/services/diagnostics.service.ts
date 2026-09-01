@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { DiagnosticSessionStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
@@ -113,7 +113,9 @@ export class DiagnosticsService {
       completed: profile?.diagnosticCompleted ?? false,
       inProgressSessionId: inProgress?.id,
       resumeStepId: inProgressMeta?.currentStepId,
-      latestResult: latest?.report as DiagnosticReport | undefined,
+      latestResult: latest?.report
+        ? this.sanitizeReport(latest.report as DiagnosticReport)
+        : undefined,
       completedAt:
         latest?.session.completedAt?.toISOString() ??
         latest?.createdAt.toISOString(),
@@ -151,7 +153,7 @@ export class DiagnosticsService {
 
     // Don't auto-start a new session if already completed — use retake instead
     if (profile?.diagnosticCompleted) {
-      throw new Error(
+      throw new ConflictException(
         'Diagnostic already completed. Use retake to start again.',
       );
     }
@@ -221,7 +223,7 @@ export class DiagnosticsService {
     });
 
     await this.cacheService.invalidateUser(userId);
-    return report;
+    return this.sanitizeReport(report);
   }
 
   async getSession(sessionId: string, userId: string) {
@@ -559,6 +561,28 @@ export class DiagnosticsService {
     return report;
   }
 
+  private sanitizeText(value: string): string {
+    return value.replace(/\*\*/g, '').trim();
+  }
+
+  private sanitizeReport(report: DiagnosticReport): DiagnosticReport {
+    return {
+      ...report,
+      headline: this.sanitizeText(report.headline),
+      summary: this.sanitizeText(report.summary),
+      learningStyle: this.sanitizeText(report.learningStyle),
+      nextBestAction: this.sanitizeText(report.nextBestAction),
+      collegeFit: report.collegeFit ? this.sanitizeText(report.collegeFit) : report.collegeFit,
+      strengths: report.strengths?.map((s) => this.sanitizeText(s)),
+      interests: report.interests?.map((s) => this.sanitizeText(s)),
+      recommendedDirections: report.recommendedDirections?.map((s) => this.sanitizeText(s)),
+      profileInsights: report.profileInsights?.map((s) => this.sanitizeText(s)),
+      careerMatches: report.careerMatches?.map((s) => this.sanitizeText(s)),
+      skillGaps: report.skillGaps?.map((s) => this.sanitizeText(s)),
+      actionPlan: report.actionPlan?.map((s) => this.sanitizeText(s)),
+    };
+  }
+
   private async generateReport(
     answers: Record<string, unknown>,
     userId?: string,
@@ -664,7 +688,8 @@ export class DiagnosticsService {
         }
       : {};
 
-    return this.geminiService.generateStructured<DiagnosticReport>({
+    return this.sanitizeReport(
+      await this.geminiService.generateStructured<DiagnosticReport>({
       systemPrompt: `You are an expert student career advisor for UniDiscover. Generate a comprehensive, personalized diagnostic report synthesizing:
 1) Their quiz answers
 2) Full profile (education, goals, location)
@@ -689,6 +714,7 @@ Be specific — reference their actual institution, CGPA, subjects, and goals by
         "fitScore": "number 0-100 — how aligned their profile is with stated goals"
       }`,
       fallback,
-    });
+    }),
+    );
   }
 }
