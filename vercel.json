@@ -6,6 +6,10 @@
     "api/index.ts": {
       "includeFiles": "dist/**",
       "maxDuration": 60
+    },
+    "api/ping.ts": {
+      "includeFiles": "dist/**",
+      "maxDuration": 10
     }
   },
   "rewrites": [
