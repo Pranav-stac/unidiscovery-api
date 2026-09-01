@@ -36,7 +36,22 @@ import { RolesGuard } from './common/guards/roles.guard';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      validationSchema: envValidationSchema,
+      validate: (config: Record<string, unknown>) => {
+        const trimmed = Object.fromEntries(
+          Object.entries(config).map(([key, value]) => [
+            key,
+            typeof value === 'string' ? value.trim() : value,
+          ]),
+        );
+        const { error, value } = envValidationSchema.validate(trimmed, {
+          abortEarly: false,
+          allowUnknown: true,
+        });
+        if (error) {
+          throw new Error(`Config validation error: ${error.message}`);
+        }
+        return value as Record<string, unknown>;
+      },
     }),
     LoggerModule.forRoot({
       pinoHttp: {
