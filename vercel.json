@@ -4,12 +4,8 @@
   "installCommand": "npm install",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "dist/**",
+      "includeFiles": "node_modules/.prisma/**",
       "maxDuration": 60
-    },
-    "api/ping.ts": {
-      "includeFiles": "dist/**",
-      "maxDuration": 10
     }
   },
   "rewrites": [
