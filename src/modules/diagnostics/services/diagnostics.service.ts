@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { DiagnosticSessionStatus, Prisma } from '@prisma/client';
+import { DiagnosticSessionStatus, DiagnosticTemplate, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
@@ -49,7 +49,7 @@ export interface DiagnosticReport {
 @Injectable()
 export class DiagnosticsService {
   private activeTemplateCache: {
-    template: Awaited<ReturnType<DiagnosticsService['getActiveTemplate']>>;
+    template: DiagnosticTemplate | null;
     expires: number;
   } | null = null;
 
@@ -68,7 +68,7 @@ export class DiagnosticsService {
     this.stepsCache.delete(userId);
   }
 
-  async getActiveTemplate() {
+  async getActiveTemplate(): Promise<DiagnosticTemplate | null> {
     if (
       this.activeTemplateCache &&
       this.activeTemplateCache.expires > Date.now()
@@ -114,7 +114,7 @@ export class DiagnosticsService {
       inProgressSessionId: inProgress?.id,
       resumeStepId: inProgressMeta?.currentStepId,
       latestResult: latest?.report
-        ? this.sanitizeReport(latest.report as DiagnosticReport)
+        ? this.sanitizeReport(latest.report as unknown as DiagnosticReport)
         : undefined,
       completedAt:
         latest?.session.completedAt?.toISOString() ??
