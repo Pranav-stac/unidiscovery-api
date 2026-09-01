@@ -18,6 +18,14 @@ export class DiagnosticsController {
     return this.diagnosticsService.getStatus(user.id);
   }
 
+  @Get('bootstrap')
+  @ApiOperation({
+    summary: 'Get diagnostic status and personalized steps in one request',
+  })
+  getBootstrap(@CurrentUser() user: AuthenticatedUser) {
+    return this.diagnosticsService.getBootstrap(user.id);
+  }
+
   @Get('steps')
   @ApiOperation({ summary: 'Get personalized diagnostic steps' })
   getSteps(@CurrentUser() user: AuthenticatedUser) {

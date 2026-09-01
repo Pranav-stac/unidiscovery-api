@@ -238,6 +238,7 @@ model DiagnosticResult {
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("diagnostic_results")
 }
 

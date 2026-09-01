@@ -48,38 +48,66 @@ export interface DiagnosticReport {
 
 @Injectable()
 export class DiagnosticsService {
+  private activeTemplateCache: {
+    template: Awaited<ReturnType<DiagnosticsService['getActiveTemplate']>>;
+    expires: number;
+  } | null = null;
+
+  private stepsCache = new Map<
+    string,
+    { steps: DiagnosticStep[]; expires: number }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly geminiService: GeminiService,
     private readonly cacheService: CacheService,
   ) {}
 
+  private invalidateStepsCache(userId: string) {
+    this.stepsCache.delete(userId);
+  }
+
   async getActiveTemplate() {
-    return this.prisma.diagnosticTemplate.findFirst({
+    if (
+      this.activeTemplateCache &&
+      this.activeTemplateCache.expires > Date.now()
+    ) {
+      return this.activeTemplateCache.template;
+    }
+
+    const template = await this.prisma.diagnosticTemplate.findFirst({
       where: { isActive: true },
       orderBy: { version: 'desc' },
     });
+
+    this.activeTemplateCache = {
+      template,
+      expires: Date.now() + 10 * 60 * 1000,
+    };
+
+    return template;
   }
 
   async getStatus(userId: string) {
-    const profile = await this.prisma.studentProfile.findUnique({
-      where: { userId },
-      select: { diagnosticCompleted: true },
-    });
-
-    const inProgress = await this.prisma.diagnosticSession.findFirst({
-      where: { userId, status: DiagnosticSessionStatus.IN_PROGRESS },
-    });
+    const [profile, inProgress, latest] = await Promise.all([
+      this.prisma.studentProfile.findUnique({
+        where: { userId },
+        select: { diagnosticCompleted: true },
+      }),
+      this.prisma.diagnosticSession.findFirst({
+        where: { userId, status: DiagnosticSessionStatus.IN_PROGRESS },
+      }),
+      this.prisma.diagnosticResult.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: { session: { select: { completedAt: true } } },
+      }),
+    ]);
 
     const inProgressMeta = inProgress?.metadata as {
       currentStepId?: string;
     } | null;
-
-    const latest = await this.prisma.diagnosticResult.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      include: { session: { select: { completedAt: true } } },
-    });
 
     return {
       completed: profile?.diagnosticCompleted ?? false,
@@ -92,24 +120,34 @@ export class DiagnosticsService {
     };
   }
 
+  async getBootstrap(userId: string) {
+    const [status, steps] = await Promise.all([
+      this.getStatus(userId),
+      this.getStepsForUser(userId),
+    ]);
+
+    return { ...status, steps };
+  }
+
   async startSession(userId: string) {
-    const template = await this.getActiveTemplate();
+    const [template, existing, profile] = await Promise.all([
+      this.getActiveTemplate(),
+      this.prisma.diagnosticSession.findFirst({
+        where: { userId, status: DiagnosticSessionStatus.IN_PROGRESS },
+      }),
+      this.prisma.studentProfile.findUnique({
+        where: { userId },
+        select: { diagnosticCompleted: true },
+      }),
+    ]);
+
     if (!template) {
       throw new Error('No active diagnostic template configured');
     }
 
-    const existing = await this.prisma.diagnosticSession.findFirst({
-      where: { userId, status: DiagnosticSessionStatus.IN_PROGRESS },
-    });
-
     if (existing) {
       return existing;
     }
-
-    const profile = await this.prisma.studentProfile.findUnique({
-      where: { userId },
-      select: { diagnosticCompleted: true },
-    });
 
     // Don't auto-start a new session if already completed — use retake instead
     if (profile?.diagnosticCompleted) {
@@ -137,6 +175,8 @@ export class DiagnosticsService {
       where: { userId, status: DiagnosticSessionStatus.IN_PROGRESS },
       data: { status: DiagnosticSessionStatus.ABANDONED },
     });
+
+    this.invalidateStepsCache(userId);
 
     return this.prisma.diagnosticSession.create({
       data: {
@@ -257,10 +297,15 @@ export class DiagnosticsService {
   }
 
   async getStepsForUser(userId: string): Promise<DiagnosticStep[]> {
+    const cached = this.stepsCache.get(userId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.steps;
+    }
+
     const ctx = await this.getProfileContext(userId);
     if (!ctx) return this.getInitialSteps();
 
-    return buildStoryDiagnosticSteps({
+    const steps = buildStoryDiagnosticSteps({
       name: ctx.name,
       isCollege: ctx.isCollege,
       classGroup: ctx.classGroup,
@@ -281,6 +326,13 @@ export class DiagnosticsService {
       resumeSummary: ctx.resumeSummary,
       interests: ctx.interests,
     });
+
+    this.stepsCache.set(userId, {
+      steps,
+      expires: Date.now() + 5 * 60 * 1000,
+    });
+
+    return steps;
   }
 
   getInitialSteps(): DiagnosticStep[] {
@@ -502,6 +554,7 @@ export class DiagnosticsService {
     });
 
     await this.cacheService.invalidateUser(userId);
+    this.invalidateStepsCache(userId);
 
     return report;
   }
