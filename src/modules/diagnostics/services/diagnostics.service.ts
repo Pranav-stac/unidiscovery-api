@@ -295,6 +295,7 @@ export class DiagnosticsService {
       semesterCount: semesterRecords.length,
       transcriptSummary: transcript.aiSummary as string | undefined,
       documentCount: documents.length,
+      onboardingCompleted: profile.onboardingCompleted,
     };
   }
 
@@ -327,6 +328,7 @@ export class DiagnosticsService {
       transcriptProgram: ctx.transcriptProgram,
       resumeSummary: ctx.resumeSummary,
       interests: ctx.interests,
+      onboardingCompleted: ctx.onboardingCompleted,
     });
 
     this.stepsCache.set(userId, {

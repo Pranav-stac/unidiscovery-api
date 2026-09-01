@@ -100,9 +100,23 @@ function shouldSkipQuestion(
 ): boolean {
   const id = q.questionId;
 
-  if (id.endsWith('_q1_profile') && ctx.school && ctx.board && ctx.country)
-    return true;
-  if (id.endsWith('_q2_subjects') && ctx.stream) return true;
+  if (id.endsWith('_q1_profile')) {
+    if (ctx.onboardingCompleted) return true;
+    const hasGradeContext = !!(ctx.classGroup || ctx.grade);
+    const hasLocation = !!ctx.country;
+    const hasAcademicContext = !!(ctx.board || ctx.school);
+    return hasGradeContext && hasLocation && hasAcademicContext;
+  }
+
+  if (id.endsWith('_q2_subjects')) {
+    if (ctx.onboardingCompleted) return true;
+    return !!(
+      ctx.stream ||
+      ctx.transcriptProgram ||
+      (ctx.subjects?.length ?? 0) > 0
+    );
+  }
+
   if (id === 'g1112_q3_grades_scores' && (ctx.cgpa || ctx.percentage))
     return true;
   if (id === 'g910_q30_favorite_subjects' && (ctx.subjects?.length ?? 0) > 0)
