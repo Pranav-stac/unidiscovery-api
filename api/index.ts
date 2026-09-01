@@ -2,14 +2,7 @@ import 'reflect-metadata';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Built by `npm run vercel-build` before the serverless bundle is created.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createApp } = require('../dist/src/create-app') as {
-  createApp: (
-    adapter: ExpressAdapter,
-  ) => Promise<import('@nestjs/common').INestApplication>;
-};
+import { createApp } from '../src/create-app';
 
 let server: express.Express | undefined;
 let initError: Error | undefined;
