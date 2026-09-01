@@ -18,4 +18,5 @@ export interface StoryProfileContext {
   transcriptProgram?: string;
   resumeSummary?: string | null;
   interests?: string[];
+  onboardingCompleted?: boolean;
 }
