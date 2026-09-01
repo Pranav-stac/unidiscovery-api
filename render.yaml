@@ -26,17 +26,3 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: https://unidiscovery-web.vercel.app,https://unidiscovery-web-pranav-stacs-projects.vercel.app,http://localhost:3000
-
-  - type: cron
-    name: unidiscovery-api-pn-keepalive
-    runtime: node
-    plan: free
-    region: singapore
-    repo: https://github.com/Pranav-stac/unidiscovery-api
-    branch: main
-    schedule: '*/10 * * * *'
-    buildCommand: echo "keep-alive ready"
-    startCommand: node scripts/keep-alive.js
-    envVars:
-      - key: KEEP_ALIVE_URL
-        value: https://unidiscovery-api-pn.onrender.com/api/v1/health
