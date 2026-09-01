@@ -52,21 +52,19 @@ export class AuthService implements OnModuleInit {
   }
 
   private async seedAdminUser(): Promise<void> {
-    const email = this.configService.get<string>(
-      'admin.email',
-      'admin@platform.local',
-    );
+    const email = this.configService.get<string>('admin.email', 'pranav@admin.com');
+    const password = this.configService.get<string>('admin.password', 'Pranav!123');
+    const name = this.configService.get<string>('admin.name', 'Pranav Admin');
+    const passwordHash = await this.hashPassword(password);
+
     const existing = await this.usersRepository.findByEmail(email);
     if (existing) {
+      if (existing.role === UserRole.ADMIN) {
+        await this.usersRepository.updatePassword(existing.id, passwordHash);
+        this.logger.log(`Synced admin credentials for: ${email}`);
+      }
       return;
     }
-
-    const password = this.configService.get<string>(
-      'admin.password',
-      'ChangeMe123!',
-    );
-    const name = this.configService.get<string>('admin.name', 'Platform Admin');
-    const passwordHash = await this.hashPassword(password);
 
     await this.usersRepository.create({
       email,
