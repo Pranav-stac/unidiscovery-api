@@ -10,7 +10,7 @@
     "vercel-build": "prisma generate",
     "postinstall": "prisma generate",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start:dev": "nest start --watch",
+    "start:dev": "node ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "start:debug": "nest start --debug --watch",
     "start": "node dist/src/main.js",
     "start:prod": "node dist/src/main.js",
