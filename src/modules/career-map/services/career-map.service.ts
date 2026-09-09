@@ -321,7 +321,7 @@ Cover from current grade through age ~22-25: school → college → career → e
       title: 'Build foundation',
       description: 'Complete onboarding, diagnostic, and profile.',
       actions: [
-        'Finish AI discovery',
+        'Finish diagnostic test',
         'Save target colleges',
         'Plan 2 activities',
       ],

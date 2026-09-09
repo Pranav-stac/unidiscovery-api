@@ -116,10 +116,10 @@ export class ProfilesService {
         title: 'Know Yourself',
         description:
           onboardingDone && diagnosticDone
-            ? 'Profile & AI discovery complete'
+            ? 'Profile & diagnostic test complete'
             : !onboardingDone
               ? 'Set up your profile'
-              : 'Complete AI discovery',
+              : 'Complete diagnostic test',
         href: !onboardingDone ? '/onboarding' : '/diagnostics',
         status:
           onboardingDone && diagnosticDone
@@ -134,7 +134,7 @@ export class ProfilesService {
               ? diagnosticDone
                 ? 100
                 : 50
-              : Math.min(100, (profile?.onboardingStep ?? 0) * 25),
+              : Math.min(100, Math.round(((profile?.onboardingStep ?? 0) / 3) * 100)),
       },
       {
         id: 'career-map',

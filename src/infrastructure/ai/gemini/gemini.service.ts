@@ -85,6 +85,19 @@ export class GeminiService {
     return result.response.text();
   }
 
+  async *streamGenerateText(prompt: string): AsyncGenerator<string> {
+    if (!this.model) {
+      yield 'AI is not configured. Please add GEMINI_API_KEY.';
+      return;
+    }
+
+    const result = await this.model.generateContentStream(prompt);
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) yield text;
+    }
+  }
+
   async generateStructured<T>(request: GeminiStructuredRequest<T>): Promise<T> {
     if (!this.model) {
       return request.fallback;

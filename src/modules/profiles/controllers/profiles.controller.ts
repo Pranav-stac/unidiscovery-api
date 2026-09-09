@@ -43,7 +43,7 @@ class UpdateProfileDto {
   @IsOptional() @IsObject() transcriptData?: Record<string, unknown>;
   @IsOptional() @IsObject() resumeData?: Record<string, unknown>;
   @IsOptional() @IsString() resumeSummary?: string;
-  @IsOptional() @IsInt() @Min(0) @Max(4) onboardingStep?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(3) onboardingStep?: number;
   @IsOptional() @IsBoolean() onboardingCompleted?: boolean;
   @IsOptional() @IsBoolean() diagnosticCompleted?: boolean;
   @IsOptional() @IsObject() goals?: Record<string, unknown>;

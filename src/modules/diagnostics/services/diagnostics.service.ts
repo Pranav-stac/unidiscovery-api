@@ -197,7 +197,7 @@ export class DiagnosticsService {
     });
 
     if (!latestSession?.result) {
-      throw new Error('Complete AI Discovery first to generate insights');
+      throw new Error('Complete diagnostic test first to generate insights');
     }
 
     const answers = latestSession.answers as Record<string, unknown>;
