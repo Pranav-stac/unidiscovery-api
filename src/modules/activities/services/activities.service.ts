@@ -2,8 +2,50 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ActivityType } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
+import { CacheService } from '../../../infrastructure/cache/cache.service';
 import { ProfileContextService } from '../../../common/services/profile-context.service';
 import { isDeadlineOpen } from '../utils/activity-deadline.util';
+import { sanitizeActivities, sanitizeActivity } from '../utils/activity-response.util';
+
+const LIST_CACHE_TTL = 300;
+const DETAIL_CACHE_TTL = 600;
+const FILTER_CACHE_TTL = 3600;
+const RECOMMEND_CACHE_TTL = 300;
+
+export interface ActivitiesListResult {
+  items: Awaited<ReturnType<typeof sanitizeActivities>>;
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface ActivityRecommendationResult {
+  activity: ReturnType<typeof sanitizeActivity>;
+  score: number;
+  tip: string;
+}
+
+export interface ActivityFilterOptionsResult {
+  countries: string[];
+  formats: string[];
+  costs: string[];
+  categories: string[];
+  levels: string[];
+}
+
+export interface ActivityListOptions {
+  type?: ActivityType;
+  grade?: number;
+  search?: string;
+  country?: string;
+  format?: string;
+  cost?: string;
+  category?: string;
+  highlySelective?: boolean;
+  page?: number;
+  limit?: number;
+}
 
 @Injectable()
 export class ActivitiesService {
@@ -11,15 +53,14 @@ export class ActivitiesService {
     private readonly prisma: PrismaService,
     private readonly geminiService: GeminiService,
     private readonly profileContext: ProfileContextService,
+    private readonly cacheService: CacheService,
   ) {}
 
-  async list(options: {
-    type?: ActivityType;
-    grade?: number;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async list(options: ActivityListOptions): Promise<ActivitiesListResult> {
+    const cacheKey = `activities:list:${JSON.stringify(options)}`;
+    const cached = await this.cacheService.get<ActivitiesListResult>(cacheKey);
+    if (cached) return cached;
+
     const where = this.buildListWhere(options);
 
     const page = Math.max(1, options.page ?? 1);
@@ -37,13 +78,17 @@ export class ActivitiesService {
         take: batchSize,
       });
       if (!batch.length) break;
-      collected.push(...batch.filter((a) => isDeadlineOpen(a.metadata)));
+      collected.push(
+        ...batch.filter(
+          (a) => isDeadlineOpen(a.metadata) && this.matchesMetadataFilters(a, options),
+        ),
+      );
       dbSkip += batch.length;
       if (batch.length < batchSize) break;
     }
 
     const start = (page - 1) * limit;
-    const items = collected.slice(start, start + limit);
+    const items = sanitizeActivities(collected.slice(start, start + limit));
 
     let hasMore = collected.length > start + limit;
     if (!hasMore && dbSkip > 0) {
@@ -56,28 +101,71 @@ export class ActivitiesService {
           take: batchSize,
         });
         if (!probe.length) break;
-        hasMore = probe.some((a) => isDeadlineOpen(a.metadata));
+        hasMore = probe.some(
+          (a) => isDeadlineOpen(a.metadata) && this.matchesMetadataFilters(a, options),
+        );
         probeSkip += probe.length;
         if (probe.length < batchSize) break;
       }
     }
 
-    const total = await this.countOpenActivities(where);
+    const total = await this.countOpenActivities(where, options);
 
-    return {
+    const result = {
       items,
       total,
       page,
       limit,
       hasMore,
     };
+
+    await this.cacheService.set(cacheKey, result, LIST_CACHE_TTL);
+    return result;
   }
 
-  private buildListWhere(options: {
-    type?: ActivityType;
-    grade?: number;
-    search?: string;
-  }) {
+  async getFilterOptions(): Promise<ActivityFilterOptionsResult> {
+    const cacheKey = 'activities:filters';
+    const cached = await this.cacheService.get<ActivityFilterOptionsResult>(cacheKey);
+    if (cached) return cached;
+
+    const rows = await this.prisma.activity.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { metadata: true },
+      take: 3000,
+    });
+
+    const countries = new Set<string>();
+    const formats = new Set<string>();
+    const costs = new Set<string>();
+    const categories = new Set<string>();
+    const levels = new Set<string>();
+
+    for (const row of rows) {
+      if (!isDeadlineOpen(row.metadata)) continue;
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      if (typeof meta.country === 'string' && meta.country.trim()) countries.add(meta.country.trim());
+      if (typeof meta.format === 'string' && meta.format.trim()) formats.add(meta.format.trim());
+      if (typeof meta.cost === 'string' && meta.cost.trim()) costs.add(meta.cost.trim());
+      if (typeof meta.category === 'string' && meta.category.trim()) {
+        categories.add(meta.category.trim().replace(/_/g, ' '));
+      }
+      if (typeof meta.level === 'string' && meta.level.trim()) levels.add(meta.level.trim());
+    }
+
+    const sortAlpha = (a: string, b: string) => a.localeCompare(b);
+    const result = {
+      countries: [...countries].sort(sortAlpha),
+      formats: [...formats].sort(sortAlpha),
+      costs: [...costs].sort(sortAlpha),
+      categories: [...categories].sort(sortAlpha),
+      levels: [...levels].sort(sortAlpha),
+    };
+
+    await this.cacheService.set(cacheKey, result, FILTER_CACHE_TTL);
+    return result;
+  }
+
+  private buildListWhere(options: Pick<ActivityListOptions, 'type' | 'grade' | 'search'>) {
     const search = options.search?.trim();
     return {
       isActive: true,
@@ -102,39 +190,78 @@ export class ActivitiesService {
     };
   }
 
+  private matchesMetadataFilters(
+    activity: { metadata: unknown },
+    options: ActivityListOptions,
+  ): boolean {
+    const meta = (activity.metadata ?? {}) as Record<string, unknown>;
+
+    if (options.country && String(meta.country ?? '') !== options.country) return false;
+
+    if (options.format) {
+      const format = String(meta.format ?? '').toLowerCase();
+      if (!format.includes(options.format.toLowerCase())) return false;
+    }
+
+    if (options.cost) {
+      const cost = String(meta.cost ?? '').toLowerCase();
+      if (!cost.includes(options.cost.toLowerCase())) return false;
+    }
+
+    if (options.category) {
+      const category = String(meta.category ?? '')
+        .replace(/_/g, ' ')
+        .toLowerCase();
+      if (category !== options.category.toLowerCase()) return false;
+    }
+
+    if (options.highlySelective && !meta.highlySelective) return false;
+
+    return true;
+  }
+
   private async countOpenActivities(
     where: ReturnType<ActivitiesService['buildListWhere']>,
+    options: ActivityListOptions,
   ) {
     const rows = await this.prisma.activity.findMany({
       where,
       select: { metadata: true },
     });
-    return rows.filter((r) => isDeadlineOpen(r.metadata)).length;
+    return rows.filter(
+      (r) => isDeadlineOpen(r.metadata) && this.matchesMetadataFilters(r, options),
+    ).length;
   }
 
-  async recommend(userId: string) {
+  async recommend(userId: string): Promise<ActivityRecommendationResult[]> {
+    const cacheKey = `activities:recommend:${userId}`;
+    const cached = await this.cacheService.get<ActivityRecommendationResult[]>(cacheKey);
+    if (cached) return cached;
+
     const profile = await this.profileContext.getProfileOrThrow(userId);
     const grade =
       profile.grade && profile.grade >= 6 && profile.grade <= 12 ? profile.grade : undefined;
 
-    const activities = (
-      await this.prisma.activity.findMany({
-        where: {
-          isActive: true,
-          deletedAt: null,
-          ...(grade
-            ? {
-                AND: [
-                  { OR: [{ gradeMin: null }, { gradeMin: { lte: grade } }] },
-                  { OR: [{ gradeMax: null }, { gradeMax: { gte: grade } }] },
-                ],
-              }
-            : {}),
-        },
-        take: 400,
-        orderBy: { updatedAt: 'desc' },
-      })
-    ).filter((a) => isDeadlineOpen(a.metadata));
+    const activities = sanitizeActivities(
+      (
+        await this.prisma.activity.findMany({
+          where: {
+            isActive: true,
+            deletedAt: null,
+            ...(grade
+              ? {
+                  AND: [
+                    { OR: [{ gradeMin: null }, { gradeMin: { lte: grade } }] },
+                    { OR: [{ gradeMax: null }, { gradeMax: { gte: grade } }] },
+                  ],
+                }
+              : {}),
+          },
+          take: 400,
+          orderBy: { updatedAt: 'desc' },
+        })
+      ).filter((a) => isDeadlineOpen(a.metadata)),
+    );
 
     const scored = activities
       .map((activity) => ({
@@ -158,10 +285,15 @@ export class ActivitiesService {
       }),
     );
 
+    await this.cacheService.set(cacheKey, withTips, RECOMMEND_CACHE_TTL);
     return withTips;
   }
 
-  async getById(id: string) {
+  async getById(id: string): Promise<ReturnType<typeof sanitizeActivity>> {
+    const cacheKey = `activities:detail:${id}`;
+    const cached = await this.cacheService.get<ReturnType<typeof sanitizeActivity>>(cacheKey);
+    if (cached) return cached;
+
     const activity = await this.prisma.activity.findFirst({
       where: { id, isActive: true, deletedAt: null },
     });
@@ -169,7 +301,10 @@ export class ActivitiesService {
     if (!isDeadlineOpen(activity.metadata)) {
       throw new NotFoundException('Activity not found');
     }
-    return activity;
+
+    const sanitized = sanitizeActivity(activity);
+    await this.cacheService.set(cacheKey, sanitized, DETAIL_CACHE_TTL);
+    return sanitized;
   }
 
   async getOverview(userId: string, activityId: string) {
@@ -223,6 +358,8 @@ Be specific, encouraging, and actionable.`,
     });
     if (!activity) throw new NotFoundException('Activity not found');
 
+    await this.cacheService.del(`activities:recommend:${userId}`);
+
     return this.prisma.savedActivity.upsert({
       where: { userId_activityId: { userId, activityId } },
       update: { notes },
@@ -235,6 +372,11 @@ Be specific, encouraging, and actionable.`,
       where: { userId },
       include: { activity: true },
     });
-    return rows.filter((row) => isDeadlineOpen(row.activity.metadata));
+    return rows
+      .filter((row) => isDeadlineOpen(row.activity.metadata))
+      .map((row) => ({
+        ...row,
+        activity: sanitizeActivity(row.activity),
+      }));
   }
 }

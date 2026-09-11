@@ -16,6 +16,11 @@ export class ActivitiesController {
     @Query('type') type?: ActivityType,
     @Query('grade') grade?: string,
     @Query('search') search?: string,
+    @Query('country') country?: string,
+    @Query('format') format?: string,
+    @Query('cost') cost?: string,
+    @Query('category') category?: string,
+    @Query('highlySelective') highlySelective?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -23,9 +28,19 @@ export class ActivitiesController {
       type,
       grade: grade ? Number(grade) : undefined,
       search,
+      country: country || undefined,
+      format: format || undefined,
+      cost: cost || undefined,
+      category: category || undefined,
+      highlySelective: highlySelective === 'true' || highlySelective === '1',
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 24,
     });
+  }
+
+  @Get('filters')
+  filters() {
+    return this.activitiesService.getFilterOptions();
   }
 
   @Post('recommend')
