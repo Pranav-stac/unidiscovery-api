@@ -26,6 +26,9 @@ describe('answer-quality.validator', () => {
   it('flags gibberish text', () => {
     expect(isGibberishText('asdf')).toBe(true);
     expect(isGibberishText('test')).toBe(true);
+    expect(isGibberishText('gibberish gibberish')).toBe(true);
+    expect(isGibberishText('test test test')).toBe(true);
+    expect(isGibberishText('blah blah blah blah')).toBe(true);
     expect(isGibberishText('I enjoy building robots and coding games')).toBe(false);
   });
 
@@ -47,6 +50,37 @@ describe('answer-quality.validator', () => {
 
     expect(result.valid).toBe(false);
     expect(result.code).toBe('GIBBERISH_DETECTED');
+  });
+
+  it('rejects repeated low-effort tokens', () => {
+    const steps: DiagnosticStep[] = [textStep('worry', 'What worries you?')];
+
+    const result = validateDiagnosticAnswers(
+      {
+        worry: 'gibberish answer here please',
+      },
+      steps,
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.code).toBe('GIBBERISH_DETECTED');
+  });
+
+  it('requires open-text answers to be present', () => {
+    const steps: DiagnosticStep[] = [
+      textStep('worry', 'What worries you?'),
+      choiceStep('q1'),
+    ];
+
+    const result = validateDiagnosticAnswers(
+      {
+        q1: 'a',
+      },
+      steps,
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.some((issue) => issue.includes('not answered'))).toBe(true);
   });
 
   it('accepts thoughtful answers', () => {

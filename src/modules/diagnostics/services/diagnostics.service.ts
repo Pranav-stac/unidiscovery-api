@@ -11,6 +11,7 @@ import { CacheService } from '../../../infrastructure/cache/cache.service';
 
 import { buildStoryDiagnosticSteps } from '../data/legacy-story.adapter';
 import {
+  RETEST_MESSAGE,
   validateDiagnosticAnswers,
   validateSingleTextAnswer,
 } from './answer-quality.validator';
@@ -110,7 +111,7 @@ export class DiagnosticsService {
       this.prisma.diagnosticResult.findFirst({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        include: { session: { select: { completedAt: true } } },
+        include: { session: { select: { completedAt: true, answers: true } } },
       }),
     ]);
 
@@ -118,13 +119,27 @@ export class DiagnosticsService {
       currentStepId?: string;
     } | null;
 
+    let latestResult = latest?.report
+      ? this.sanitizeReport(latest.report as unknown as DiagnosticReport)
+      : undefined;
+
+    const sessionAnswers = latest?.session?.answers;
+    if (latestResult && sessionAnswers) {
+      const steps = await this.getStepsForUser(userId);
+      const quality = validateDiagnosticAnswers(
+        sessionAnswers as Record<string, unknown>,
+        steps,
+      );
+      if (!quality.valid) {
+        latestResult = undefined;
+      }
+    }
+
     return {
       completed: profile?.diagnosticCompleted ?? false,
       inProgressSessionId: inProgress?.id,
       resumeStepId: inProgressMeta?.currentStepId,
-      latestResult: latest?.report
-        ? this.sanitizeReport(latest.report as unknown as DiagnosticReport)
-        : undefined,
+      latestResult,
       completedAt:
         latest?.session.completedAt?.toISOString() ??
         latest?.createdAt.toISOString(),
@@ -638,14 +653,16 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
         "message": "string — retake guidance if invalid, empty if valid",
         "issues": ["string — specific problems found"]
       }`,
-      fallback: { valid: true, message: '', issues: [] },
+      fallback: {
+        valid: false,
+        message: RETEST_MESSAGE,
+        issues: ['Answer quality could not be verified automatically.'],
+      },
     });
 
     if (!aiCheck.valid) {
       throw new UnprocessableEntityException({
-        message:
-          aiCheck.message ||
-          'Your answers do not look complete enough for a reliable report. Please retake the diagnostic and answer each question thoughtfully.',
+        message: aiCheck.message || RETEST_MESSAGE,
         code: 'ANSWERS_INVALID',
         issues: aiCheck.issues?.length
           ? aiCheck.issues

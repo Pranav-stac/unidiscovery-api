@@ -12,6 +12,56 @@ export interface AnswerQualityResult {
   code: AnswerQualityCode;
 }
 
+export const RETEST_MESSAGE =
+  'We could not generate reliable insights from these answers. Please retake the diagnostic and answer each question thoughtfully — especially open-text and aptitude questions.';
+
+const PLACEHOLDER_TOKENS = new Set([
+  'asdf',
+  'asdfgh',
+  'qwer',
+  'qwerty',
+  'zxcv',
+  'zxcvb',
+  'hjkl',
+  'test',
+  'testing',
+  'hello',
+  'abc',
+  'xyz',
+  'na',
+  'n/a',
+  'none',
+  'nope',
+  'idk',
+  'dunno',
+  'whatever',
+  'random',
+  'skip',
+  'skipped',
+  'blah',
+  'blahblah',
+  'lorem',
+  'ipsum',
+  'fdsa',
+  'something',
+  'anything',
+  'nothing',
+  'gibberish',
+  'gibberishh',
+  'nonsense',
+  'garbage',
+  'trash',
+  'dummy',
+  'filler',
+  'noidea',
+  'dontknow',
+  "don't",
+  'know',
+  'aaa',
+  'bbb',
+  'xxx',
+]);
+
 const PLACEHOLDER_PATTERNS = [
   /^asdf/i,
   /^qwer/i,
@@ -34,6 +84,8 @@ const PLACEHOLDER_PATTERNS = [
   /^something$/i,
   /^anything$/i,
   /^blah+$/i,
+  /^gibberish+$/i,
+  /^nonsense+$/i,
   /^lorem/i,
   /^fdsa/i,
   /^jkl/i,
@@ -45,6 +97,18 @@ const PLACEHOLDER_PATTERNS = [
   /^\?+$/,
   /^\.+$/,
   /^-+$/,
+];
+
+const LOW_EFFORT_PHRASES = [
+  'gibberish',
+  'nonsense',
+  'no idea',
+  "don't know",
+  'dont know',
+  'just typing',
+  'random text',
+  'placeholder',
+  'lorem ipsum',
 ];
 
 const KEYBOARD_MASH =
@@ -72,6 +136,26 @@ function isAptitudeStep(step: DiagnosticStep): boolean {
   );
 }
 
+function normalizeToken(token: string): string {
+  return token.toLowerCase().replace(/[^a-z0-9']/g, '');
+}
+
+function isPlaceholderToken(token: string): boolean {
+  const normalized = normalizeToken(token);
+  if (!normalized) return true;
+  if (PLACEHOLDER_TOKENS.has(normalized)) return true;
+  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function tokenize(raw: string): string[] {
+  return raw
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
 export function isGibberishText(
   raw: string,
   options: { minLength?: number; allowNumeric?: boolean } = {},
@@ -83,6 +167,10 @@ export function isGibberishText(
   if (text.length < minLength) return true;
 
   const lower = text.toLowerCase();
+
+  if (LOW_EFFORT_PHRASES.some((phrase) => lower.includes(phrase))) {
+    return true;
+  }
 
   if (PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(lower))) {
     return true;
@@ -113,9 +201,27 @@ export function isGibberishText(
     }
   }
 
-  const words = lower.split(/\s+/).filter(Boolean);
+  const words = tokenize(text);
+  if (words.length === 0) return true;
+
   if (words.length === 1 && words[0].length > 8 && !/[aeiou]/i.test(words[0])) {
     return true;
+  }
+
+  if (words.length >= 2) {
+    const uniqueWords = new Set(words);
+    if (uniqueWords.size === 1) {
+      return true;
+    }
+
+    const placeholderWordCount = words.filter(isPlaceholderToken).length;
+    if (placeholderWordCount / words.length >= 0.5) {
+      return true;
+    }
+
+    if (words.length >= 3 && uniqueWords.size / words.length < 0.34) {
+      return true;
+    }
   }
 
   return false;
@@ -162,7 +268,7 @@ function detectSuspiciousChoicePattern(
     }
   }
 
-  if (choiceValues.length < 8) return null;
+  if (choiceValues.length < 6) return null;
 
   const counts = new Map<string, number>();
   for (const value of choiceValues) {
@@ -170,8 +276,36 @@ function detectSuspiciousChoicePattern(
   }
 
   const maxCount = Math.max(...counts.values());
-  if (maxCount / choiceValues.length >= 0.75) {
+  if (maxCount / choiceValues.length >= 0.6) {
     return 'Many of your multiple-choice answers are identical — please answer each question on its own.';
+  }
+
+  return null;
+}
+
+function detectFirstOptionSpam(
+  answers: Record<string, unknown>,
+  steps: DiagnosticStep[],
+): string | null {
+  let firstOptionCount = 0;
+  let choiceCount = 0;
+
+  for (const step of steps) {
+    if (!isQuestionStep(step)) continue;
+    if (step.type !== 'choice' && step.type !== 'swipe') continue;
+    if (!step.options?.length) continue;
+
+    const answer = answers[step.id];
+    if (typeof answer !== 'string') continue;
+
+    choiceCount += 1;
+    if (answer === step.options[0].value) {
+      firstOptionCount += 1;
+    }
+  }
+
+  if (choiceCount >= 10 && firstOptionCount / choiceCount >= 0.85) {
+    return 'Your multiple-choice answers look like they were selected without reading — please retake thoughtfully.';
   }
 
   return null;
@@ -193,6 +327,10 @@ export function validateDiagnosticAnswers(
     };
   }
 
+  const textSteps = questionSteps.filter(
+    (step) => isTextStep(step) && !isAptitudeStep(step),
+  );
+
   const answeredCount = questionSteps.filter(
     (step) => answers[step.id] !== undefined && answers[step.id] !== null,
   ).length;
@@ -204,10 +342,16 @@ export function validateDiagnosticAnswers(
     );
   }
 
-  for (const step of questionSteps) {
-    if (!isTextStep(step)) continue;
+  for (const step of textSteps) {
     const answer = answers[step.id];
-    if (answer === undefined || answer === null) continue;
+    if (
+      answer === undefined ||
+      answer === null ||
+      (typeof answer === 'string' && !answer.trim())
+    ) {
+      issues.push(`"${step.title}" was not answered.`);
+      continue;
+    }
 
     const issue = validateTextAnswer(step, answer);
     if (issue) issues.push(issue);
@@ -215,6 +359,9 @@ export function validateDiagnosticAnswers(
 
   const choicePatternIssue = detectSuspiciousChoicePattern(answers, questionSteps);
   if (choicePatternIssue) issues.push(choicePatternIssue);
+
+  const firstOptionIssue = detectFirstOptionSpam(answers, questionSteps);
+  if (firstOptionIssue) issues.push(firstOptionIssue);
 
   if (issues.length === 0) {
     return {
@@ -230,7 +377,8 @@ export function validateDiagnosticAnswers(
       issue.includes('placeholder') ||
       issue.includes('random') ||
       issue.includes('incomplete') ||
-      issue.includes('too short'),
+      issue.includes('too short') ||
+      issue.includes('not answered'),
   );
 
   const code: AnswerQualityCode =
@@ -244,8 +392,7 @@ export function validateDiagnosticAnswers(
     valid: false,
     code,
     issues,
-    message:
-      'We could not generate reliable insights from these answers. Please retake the diagnostic and answer each question thoughtfully — especially open-text and aptitude questions.',
+    message: RETEST_MESSAGE,
   };
 }
 
