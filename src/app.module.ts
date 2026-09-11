@@ -27,6 +27,7 @@ import { MentorsModule } from './modules/mentors/mentors.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { CounselorModule } from './modules/counselor/counselor.module';
 import { ParentModule } from './modules/parent/parent.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -90,6 +91,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ComplianceModule,
     CounselorModule,
     ParentModule,
+    AssistantModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

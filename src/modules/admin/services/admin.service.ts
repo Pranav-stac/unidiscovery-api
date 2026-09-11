@@ -352,11 +352,12 @@ export class AdminService {
 
   // ─── Subjects ──────────────────────────────────────────────────────────────
 
-  async listSubjects(page: number, limit: number, search?: string) {
+  async listSubjects(page: number, limit: number, search?: string, category?: string) {
     const { skip, take, safePage, safeLimit } = this.paginate(page, limit);
-    const where: Prisma.SubjectWhereInput = search
-      ? { title: { contains: search, mode: 'insensitive' } }
-      : {};
+    const where: Prisma.SubjectWhereInput = {
+      ...(category ? { category } : {}),
+      ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
+    };
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.subject.findMany({ where, skip, take, orderBy: { title: 'asc' } }),
@@ -478,11 +479,12 @@ export class AdminService {
 
   // ─── Tutoring Questions ────────────────────────────────────────────────────
 
-  async listTutoringQuestions(page: number, limit: number, search?: string) {
+  async listTutoringQuestions(page: number, limit: number, search?: string, testType?: string) {
     const { skip, take, safePage, safeLimit } = this.paginate(page, limit);
-    const where: Prisma.TutoringQuestionWhereInput = search
-      ? { question: { contains: search, mode: 'insensitive' } }
-      : {};
+    const where: Prisma.TutoringQuestionWhereInput = {
+      ...(testType ? { testType: testType as Prisma.EnumTutoringTestTypeFilter['equals'] } : {}),
+      ...(search ? { question: { contains: search, mode: 'insensitive' } } : {}),
+    };
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.tutoringQuestion.findMany({

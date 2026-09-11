@@ -20,6 +20,7 @@ import {
   expandedMentorsSeed,
 } from './expanded-seed-data';
 import { applyCollegeMetadataOverrides } from './college-metadata-overrides';
+import { withCareerMetadata, withSubjectMetadata } from './career-subject-metadata';
 
 const allColleges = [...collegesSeed, ...expandedCollegesSeed];
 const allCareers = [...careersSeed, ...expandedCareersSeed];
@@ -75,7 +76,7 @@ async function main() {
     });
   }
 
-  for (const career of allCareers) {
+  for (const career of allCareers.map(withCareerMetadata)) {
     await prisma.career.upsert({
       where: { slug: career.slug },
       update: career,
@@ -83,7 +84,7 @@ async function main() {
     });
   }
 
-  for (const subject of subjectsSeed) {
+  for (const subject of subjectsSeed.map(withSubjectMetadata)) {
     await prisma.subject.upsert({
       where: { slug: subject.slug },
       update: subject,

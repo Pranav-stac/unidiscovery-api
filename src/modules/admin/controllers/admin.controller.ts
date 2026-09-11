@@ -169,8 +169,9 @@ export class AdminController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('search') search?: string,
+    @Query('category') category?: string,
   ) {
-    return this.adminService.listSubjects(Number(page), Number(limit), search);
+    return this.adminService.listSubjects(Number(page), Number(limit), search, category);
   }
 
   @Post('subjects')
@@ -247,8 +248,9 @@ export class AdminController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('search') search?: string,
+    @Query('testType') testType?: string,
   ) {
-    return this.adminService.listTutoringQuestions(Number(page), Number(limit), search);
+    return this.adminService.listTutoringQuestions(Number(page), Number(limit), search, testType);
   }
 
   @Post('tutoring-questions')

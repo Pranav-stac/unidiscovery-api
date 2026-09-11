@@ -20,11 +20,10 @@ const REGISTRY: RegistryStep[] = [
     title: 'Would you rather…',
     subtitle: 'Pick the one that appeals to you more — go with your gut',
     options: [
-      { value: 'analyze', label: 'Analyse data to find patterns', emoji: '📊' },
+      { value: 'analyze', label: 'Analyse data to find patterns' },
       {
         value: 'create',
         label: 'Design something visual or creative',
-        emoji: '🎨',
       },
     ],
   },
@@ -46,12 +45,10 @@ const REGISTRY: RegistryStep[] = [
       {
         value: 'help',
         label: 'Help or mentor someone struggling',
-        emoji: '🤝',
       },
       {
         value: 'build',
         label: 'Build a tool that solves a problem',
-        emoji: '🛠️',
       },
     ],
   },
@@ -68,11 +65,10 @@ const REGISTRY: RegistryStep[] = [
     type: 'choice',
     title: 'Would you rather…',
     options: [
-      { value: 'lead', label: 'Lead a team and pitch an idea', emoji: '🚀' },
+      { value: 'lead', label: 'Lead a team and pitch an idea' },
       {
         value: 'research',
         label: 'Research quietly and write a detailed report',
-        emoji: '📚',
       },
     ],
   },
@@ -85,10 +81,10 @@ const REGISTRY: RegistryStep[] = [
     title: 'Which stream pulls you in, even slightly?',
     subtitle: 'From legacy stream discovery questionnaire',
     options: [
-      { value: 'science', label: 'Science (PCM / PCB)', emoji: '🔬' },
-      { value: 'commerce', label: 'Commerce', emoji: '📊' },
-      { value: 'arts', label: 'Arts / Humanities', emoji: '🎭' },
-      { value: 'undecided', label: 'Still exploring', emoji: '🧭' },
+      { value: 'science', label: 'Science (PCM / PCB)' },
+      { value: 'commerce', label: 'Commerce' },
+      { value: 'arts', label: 'Arts / Humanities' },
+      { value: 'undecided', label: 'Still exploring' },
     ],
   },
 
@@ -108,15 +104,14 @@ const REGISTRY: RegistryStep[] = [
     title:
       'Approximate annual family budget for university (incl. living costs)?',
     options: [
-      { value: 'under_15l', label: 'Under ₹15L / $18K', emoji: '💰' },
-      { value: '15_35l', label: '₹15–35L / $18–42K', emoji: '💳' },
-      { value: '35_65l', label: '₹35–65L / $42–80K', emoji: '🏦' },
+      { value: 'under_15l', label: 'Under ₹15L / $18K' },
+      { value: '15_35l', label: '₹15–35L / $18–42K' },
+      { value: '35_65l', label: '₹35–65L / $42–80K' },
       {
         value: 'need_scholarship',
         label: 'Need significant scholarship',
-        emoji: '🎓',
       },
-      { value: 'no_limit', label: 'No hard limit', emoji: '✨' },
+      { value: 'no_limit', label: 'No hard limit' },
     ],
   },
   {
@@ -140,20 +135,17 @@ const REGISTRY: RegistryStep[] = [
       {
         value: 'independent',
         label: 'Independent — research, analysis, writing',
-        emoji: '🔍',
       },
       {
         value: 'leading',
         label: 'Leading people & building something',
-        emoji: '👥',
       },
-      { value: 'helping', label: 'Helping people directly', emoji: '❤️' },
+      { value: 'helping', label: 'Helping people directly' },
       {
         value: 'creating',
         label: 'Creating — design, media, art',
-        emoji: '✨',
       },
-      { value: 'technical', label: 'Solving technical problems', emoji: '⚙️' },
+      { value: 'technical', label: 'Solving technical problems' },
     ],
   },
   {
@@ -170,11 +162,11 @@ const REGISTRY: RegistryStep[] = [
     type: 'choice',
     title: 'What would make your next year a success?',
     options: [
-      { value: 'internship', label: 'A strong internship', emoji: '💼' },
-      { value: 'skills', label: 'Mastering key technical skills', emoji: '🧠' },
-      { value: 'grad_school', label: 'Grad school / MS admit', emoji: '🎓' },
-      { value: 'placement', label: 'Campus placement offer', emoji: '🏢' },
-      { value: 'startup', label: 'Starting my own venture', emoji: '🚀' },
+      { value: 'internship', label: 'A strong internship' },
+      { value: 'skills', label: 'Mastering key technical skills' },
+      { value: 'grad_school', label: 'Grad school / MS admit' },
+      { value: 'placement', label: 'Campus placement offer' },
+      { value: 'startup', label: 'Starting my own venture' },
     ],
   },
 
@@ -185,13 +177,12 @@ const REGISTRY: RegistryStep[] = [
     type: 'choice',
     title: 'I learn best when I…',
     options: [
-      { value: 'watch', label: 'Watch or read first, then try', emoji: '📖' },
-      { value: 'jump', label: 'Jump in and learn by doing', emoji: '🏃' },
-      { value: 'discuss', label: 'Discuss and ask questions', emoji: '💬' },
+      { value: 'watch', label: 'Watch or read first, then try' },
+      { value: 'jump', label: 'Jump in and learn by doing' },
+      { value: 'discuss', label: 'Discuss and ask questions' },
       {
         value: 'quiet',
         label: 'Figure it out step by step alone',
-        emoji: '🧘',
       },
     ],
   },

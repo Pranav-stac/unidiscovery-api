@@ -23,64 +23,43 @@ interface CollegeQuestion {
   skip?: (ctx: StoryProfileContext, year: CollegeYear) => boolean;
 }
 
-const CHOICE_EMOJIS = [
-  '✨',
-  '🎯',
-  '💡',
-  '🚀',
-  '🤝',
-  '📊',
-  '🎨',
-  '🔬',
-  '💼',
-  '🧠',
-];
-
 const SECTION_META: Record<
   string,
   {
-    emoji: string;
     narrative: (ctx: StoryProfileContext, year: CollegeYear) => string;
   }
 > = {
   'Campus Pulse': {
-    emoji: '🎓',
     narrative: (c, y) =>
       c.hasTranscript
         ? `We already have your academic record from ${c.school ?? 'your university'}${c.cgpa ? ` (CGPA ${c.cgpa})` : ''}. Let's focus on where you are in Year ${y} — not generic school questions.`
         : `You're in ${c.classGroupLabel ?? 'college'}${c.stream ? ` studying ${c.stream}` : ''}. This chapter is about your real priorities right now.`,
   },
   'Energy & Interests': {
-    emoji: '⚡',
     narrative: () =>
       'Forget textbook labels — what actually pulls you in when you code, build, research, or collaborate?',
   },
   'Skills & Experience': {
-    emoji: '🛠️',
     narrative: (c) =>
       c.transcriptProgram
         ? `Your program (${c.transcriptProgram}) is the foundation. Now let's map what you've built on top of it.`
         : 'Projects, internships, and self-taught skills often matter more than marks. Let us capture yours.',
   },
   'Your Next Move': {
-    emoji: '🧭',
     narrative: (c) =>
       c.targetDegree
         ? `You mentioned ${c.targetDegree}${c.targetCountries?.length ? ` in ${c.targetCountries.join(', ')}` : ''}. Let's sharpen that into an actionable path.`
         : 'Industry, grad school, startup, or still exploring — no wrong answer, just honesty.',
   },
   'Work Style & Values': {
-    emoji: '💡',
     narrative: () =>
       'The best career fit is not only what you are good at — it is how you want to spend your days.',
   },
   'Practical Reality': {
-    emoji: '🌍',
     narrative: (c) =>
       `Real plans need real constraints${c.country ? ` — studying from ${c.country}` : ''}.`,
   },
   'Your Vision': {
-    emoji: '🔮',
     narrative: (c, y) =>
       y >= 3
         ? 'You are closer to the next big decision than you think. Paint the picture — we will help you reverse-engineer it.'
@@ -119,63 +98,60 @@ function isBusinessStream(stream?: string | null): boolean {
 function skillOptions(ctx: StoryProfileContext) {
   if (isTechStream(ctx.stream)) {
     return [
-      { value: 'programming', label: 'Programming & DSA', emoji: '💻' },
-      { value: 'ml', label: 'AI / Machine Learning', emoji: '🤖' },
-      { value: 'systems', label: 'Systems & backend', emoji: '⚙️' },
-      { value: 'data', label: 'Data engineering & analytics', emoji: '📊' },
-      { value: 'product', label: 'Product thinking & UX', emoji: '🎨' },
-      { value: 'research', label: 'Research & papers', emoji: '📄' },
+      { value: 'programming', label: 'Programming & DSA' },
+      { value: 'ml', label: 'AI / Machine Learning' },
+      { value: 'systems', label: 'Systems & backend' },
+      { value: 'data', label: 'Data engineering & analytics' },
+      { value: 'product', label: 'Product thinking & UX' },
+      { value: 'research', label: 'Research & papers' },
     ];
   }
   if (isBusinessStream(ctx.stream)) {
     return [
-      { value: 'analytics', label: 'Business analytics', emoji: '📈' },
-      { value: 'finance', label: 'Finance & accounting', emoji: '💰' },
-      { value: 'marketing', label: 'Marketing & growth', emoji: '📣' },
-      { value: 'strategy', label: 'Strategy & consulting', emoji: '🧩' },
-      { value: 'ops', label: 'Operations & management', emoji: '🏢' },
-      { value: 'entrepreneurship', label: 'Entrepreneurship', emoji: '🚀' },
+      { value: 'analytics', label: 'Business analytics' },
+      { value: 'finance', label: 'Finance & accounting' },
+      { value: 'marketing', label: 'Marketing & growth' },
+      { value: 'strategy', label: 'Strategy & consulting' },
+      { value: 'ops', label: 'Operations & management' },
+      { value: 'entrepreneurship', label: 'Entrepreneurship' },
     ];
   }
   return [
-    { value: 'core', label: 'Core domain knowledge', emoji: '📚' },
-    { value: 'research', label: 'Research & writing', emoji: '🔍' },
+    { value: 'core', label: 'Core domain knowledge' },
+    { value: 'research', label: 'Research & writing' },
     {
       value: 'communication',
       label: 'Communication & presentation',
-      emoji: '🎤',
     },
-    { value: 'leadership', label: 'Leadership & teamwork', emoji: '👥' },
-    { value: 'technical', label: 'Technical / digital skills', emoji: '💻' },
-    { value: 'creative', label: 'Creative & design skills', emoji: '✨' },
+    { value: 'leadership', label: 'Leadership & teamwork' },
+    { value: 'technical', label: 'Technical / digital skills' },
+    { value: 'creative', label: 'Creative & design skills' },
   ];
 }
 
 function yearPriorityOptions(year: CollegeYear) {
   if (year === 1) {
     return [
-      { value: 'explore', label: 'Exploring specializations', emoji: '🧭' },
+      { value: 'explore', label: 'Exploring specializations' },
       {
         value: 'foundation',
         label: 'Building strong fundamentals',
-        emoji: '📚',
       },
-      { value: 'clubs', label: 'Clubs, communities & networking', emoji: '🤝' },
+      { value: 'clubs', label: 'Clubs, communities & networking' },
       {
         value: 'skills',
         label: 'Learning in-demand skills early',
-        emoji: '💻',
       },
-      { value: 'clarity', label: 'Getting career clarity', emoji: '✨' },
+      { value: 'clarity', label: 'Getting career clarity' },
     ];
   }
   if (year === 2) {
     return [
-      { value: 'specialize', label: 'Choosing a specialization', emoji: '🎯' },
-      { value: 'projects', label: 'Building portfolio projects', emoji: '🛠️' },
-      { value: 'intern_prep', label: 'Preparing for internships', emoji: '💼' },
-      { value: 'research', label: 'Exploring research', emoji: '🔬' },
-      { value: 'balance', label: 'Balancing grades & growth', emoji: '⚖️' },
+      { value: 'specialize', label: 'Choosing a specialization' },
+      { value: 'projects', label: 'Building portfolio projects' },
+      { value: 'intern_prep', label: 'Preparing for internships' },
+      { value: 'research', label: 'Exploring research' },
+      { value: 'balance', label: 'Balancing grades & growth' },
     ];
   }
   if (year === 3) {
@@ -183,20 +159,19 @@ function yearPriorityOptions(year: CollegeYear) {
       {
         value: 'internship',
         label: 'Landing a strong internship',
-        emoji: '💼',
       },
-      { value: 'grad_prep', label: 'Grad school applications', emoji: '🎓' },
-      { value: 'skills', label: 'Deep technical/domain skills', emoji: '🧠' },
-      { value: 'startup', label: 'Testing a startup idea', emoji: '🚀' },
-      { value: 'network', label: 'Building professional network', emoji: '🌐' },
+      { value: 'grad_prep', label: 'Grad school applications' },
+      { value: 'skills', label: 'Deep technical/domain skills' },
+      { value: 'startup', label: 'Testing a startup idea' },
+      { value: 'network', label: 'Building professional network' },
     ];
   }
   return [
-    { value: 'placement', label: 'Campus placement / job offer', emoji: '🏢' },
-    { value: 'grad_school', label: 'Grad school / PhD admits', emoji: '🎓' },
-    { value: 'startup', label: 'Launching or joining a startup', emoji: '🚀' },
-    { value: 'skills', label: 'Job-ready skill mastery', emoji: '⚡' },
-    { value: 'pivot', label: 'Pivoting to a new field', emoji: '🔄' },
+    { value: 'placement', label: 'Campus placement / job offer' },
+    { value: 'grad_school', label: 'Grad school / PhD admits' },
+    { value: 'startup', label: 'Launching or joining a startup' },
+    { value: 'skills', label: 'Job-ready skill mastery' },
+    { value: 'pivot', label: 'Pivoting to a new field' },
   ];
 }
 
@@ -234,32 +209,28 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
           {
             value: 'build',
             label: 'Building products people use',
-            emoji: '🛠️',
           },
           {
             value: 'research',
             label: 'Research & pushing boundaries',
-            emoji: '🔬',
           },
-          { value: 'data', label: 'Finding patterns in data', emoji: '📊' },
+          { value: 'data', label: 'Finding patterns in data' },
           {
             value: 'systems',
             label: 'Scaling systems & infrastructure',
-            emoji: '⚙️',
           },
           {
             value: 'teach',
             label: 'Teaching & explaining concepts',
-            emoji: '🎓',
           },
         ];
       }
       return [
-        { value: 'solve', label: 'Solving complex problems', emoji: '🧩' },
-        { value: 'create', label: 'Creating something new', emoji: '✨' },
-        { value: 'lead', label: 'Leading and organizing people', emoji: '👥' },
-        { value: 'help', label: 'Helping others directly', emoji: '❤️' },
-        { value: 'analyze', label: 'Analyzing and strategizing', emoji: '📈' },
+        { value: 'solve', label: 'Solving complex problems' },
+        { value: 'create', label: 'Creating something new' },
+        { value: 'lead', label: 'Leading and organizing people' },
+        { value: 'help', label: 'Helping others directly' },
+        { value: 'analyze', label: 'Analyzing and strategizing' },
       ];
     },
     evaluationCategory: 'interest',
@@ -271,11 +242,10 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     title: 'Would you rather…',
     subtitle: 'Go with your gut',
     options: [
-      { value: 'ship', label: 'Ship a product used by thousands', emoji: '🚀' },
+      { value: 'ship', label: 'Ship a product used by thousands' },
       {
         value: 'publish',
         label: 'Publish research that advances a field',
-        emoji: '📄',
       },
     ],
     evaluationCategory: 'riasec',
@@ -286,11 +256,10 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     type: 'choice',
     title: 'Would you rather…',
     options: [
-      { value: 'mentor', label: 'Mentor juniors & grow a team', emoji: '🤝' },
+      { value: 'mentor', label: 'Mentor juniors & grow a team' },
       {
         value: 'solo',
         label: 'Work deeply alone on hard problems',
-        emoji: '🧠',
       },
     ],
     evaluationCategory: 'riasec',
@@ -304,12 +273,10 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
       {
         value: 'startup',
         label: 'Take risk at an early-stage startup',
-        emoji: '🔥',
       },
       {
         value: 'stable',
         label: 'Join a stable company with clear growth',
-        emoji: '🏢',
       },
     ],
     evaluationCategory: 'riasec',
@@ -324,29 +291,27 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     dynamicOptions: (c) => {
       if (isTechStream(c.stream)) {
         return [
-          { value: 'web', label: 'Web / mobile apps', emoji: '🌐' },
-          { value: 'ml', label: 'ML / AI projects', emoji: '🤖' },
+          { value: 'web', label: 'Web / mobile apps' },
+          { value: 'ml', label: 'ML / AI projects' },
           {
             value: 'hackathon',
             label: 'Hackathons & competitions',
-            emoji: '🏆',
           },
           {
             value: 'open_source',
             label: 'Open source contributions',
-            emoji: '💻',
           },
-          { value: 'research', label: 'Research projects', emoji: '🔬' },
-          { value: 'freelance', label: 'Freelance / client work', emoji: '💼' },
+          { value: 'research', label: 'Research projects' },
+          { value: 'freelance', label: 'Freelance / client work' },
         ];
       }
       return [
-        { value: 'case', label: 'Case studies & analysis', emoji: '📊' },
-        { value: 'campaign', label: 'Campaigns & events', emoji: '📣' },
-        { value: 'research', label: 'Research & reports', emoji: '📄' },
-        { value: 'social', label: 'Community / social impact', emoji: '🌍' },
-        { value: 'startup', label: 'Startup or venture ideas', emoji: '🚀' },
-        { value: 'creative', label: 'Creative portfolios', emoji: '🎨' },
+        { value: 'case', label: 'Case studies & analysis' },
+        { value: 'campaign', label: 'Campaigns & events' },
+        { value: 'research', label: 'Research & reports' },
+        { value: 'social', label: 'Community / social impact' },
+        { value: 'startup', label: 'Startup or venture ideas' },
+        { value: 'creative', label: 'Creative portfolios' },
       ];
     },
     evaluationCategory: 'activity_preference',
@@ -380,12 +345,11 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
       {
         value: 'none',
         label: 'Mostly coursework — ready to start',
-        emoji: '🌱',
       },
-      { value: 'projects', label: 'Personal or college projects', emoji: '🛠️' },
-      { value: 'internship', label: 'Internship(s) completed', emoji: '💼' },
-      { value: 'research', label: 'Research lab / publications', emoji: '🔬' },
-      { value: 'work', label: 'Part-time or freelance work', emoji: '⚡' },
+      { value: 'projects', label: 'Personal or college projects' },
+      { value: 'internship', label: 'Internship(s) completed' },
+      { value: 'research', label: 'Research lab / publications' },
+      { value: 'work', label: 'Part-time or freelance work' },
     ],
     evaluationCategory: 'extracurricular_profile',
   },
@@ -410,15 +374,13 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
         {
           value: 'industry',
           label: 'Industry job after graduation',
-          emoji: '🏢',
         },
-        { value: 'masters', label: "Master's abroad or in India", emoji: '🎓' },
-        { value: 'phd', label: 'PhD / research career', emoji: '🔬' },
-        { value: 'startup', label: 'Startup or entrepreneurship', emoji: '🚀' },
+        { value: 'masters', label: "Master's abroad or in India" },
+        { value: 'phd', label: 'PhD / research career' },
+        { value: 'startup', label: 'Startup or entrepreneurship' },
         {
           value: 'exploring',
           label: 'Still exploring — help me decide',
-          emoji: '🧭',
         },
       ].filter((o) => !(grad && o.value === 'exploring'));
     },
@@ -434,18 +396,15 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
       {
         value: 'committed',
         label: 'Fully committed — actively preparing',
-        emoji: '🎯',
       },
       {
         value: 'leaning',
         label: 'Leaning that way — need a plan',
-        emoji: '🧭',
       },
-      { value: 'backup', label: 'One option among several', emoji: '⚖️' },
+      { value: 'backup', label: 'One option among several' },
       {
         value: 'unsure',
         label: 'Reconsidering — open to alternatives',
-        emoji: '🔄',
       },
     ],
     skip: (c) => !c.targetDegree,
@@ -457,13 +416,12 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     type: 'choice',
     title: 'When do you want to make your next big move?',
     options: [
-      { value: '6m', label: 'Within 6 months', emoji: '⚡' },
-      { value: '1y', label: 'Within 1 year', emoji: '📅' },
-      { value: '2y', label: '1–2 years', emoji: '🗓️' },
+      { value: '6m', label: 'Within 6 months' },
+      { value: '1y', label: 'Within 1 year' },
+      { value: '2y', label: '1–2 years' },
       {
         value: 'flexible',
         label: 'Flexible — building foundations first',
-        emoji: '🌱',
       },
     ],
     evaluationCategory: 'future_aspiration',
@@ -478,12 +436,12 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
         : 'Where would you ideally work or study?',
     maxSelections: 3,
     options: [
-      { value: 'india', label: 'India', emoji: '🇮🇳' },
-      { value: 'us', label: 'United States', emoji: '🇺🇸' },
-      { value: 'uk', label: 'United Kingdom', emoji: '🇬🇧' },
-      { value: 'canada', label: 'Canada', emoji: '🇨🇦' },
-      { value: 'europe', label: 'Europe (EU)', emoji: '🇪🇺' },
-      { value: 'remote', label: 'Remote / anywhere', emoji: '🌐' },
+      { value: 'india', label: 'India' },
+      { value: 'us', label: 'United States' },
+      { value: 'uk', label: 'United Kingdom' },
+      { value: 'canada', label: 'Canada' },
+      { value: 'europe', label: 'Europe (EU)' },
+      { value: 'remote', label: 'Remote / anywhere' },
     ],
     skip: (c) => !!(c.targetCountries?.length === 1 && c.targetDegree),
     evaluationCategory: 'target_universities',
@@ -494,22 +452,19 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     type: 'choice',
     title: 'Which work environment sounds most like you in 5–10 years?',
     options: [
-      { value: 'research', label: 'Research lab or academia', emoji: '🔬' },
+      { value: 'research', label: 'Research lab or academia' },
       {
         value: 'product',
         label: 'Product company — ship & iterate',
-        emoji: '📱',
       },
       {
         value: 'consulting',
         label: 'Consulting — variety & clients',
-        emoji: '💼',
       },
-      { value: 'startup', label: 'Building your own company', emoji: '🚀' },
+      { value: 'startup', label: 'Building your own company' },
       {
         value: 'impact',
         label: 'Mission-driven org (NGO, gov, social)',
-        emoji: '🌍',
       },
     ],
     evaluationCategory: 'work_friction',
@@ -521,20 +476,18 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     title: 'What would make you feel successful? (Pick top 3)',
     maxSelections: 3,
     options: [
-      { value: 'income', label: 'Strong financial growth', emoji: '💰' },
-      { value: 'impact', label: 'Meaningful impact on people', emoji: '❤️' },
+      { value: 'income', label: 'Strong financial growth' },
+      { value: 'impact', label: 'Meaningful impact on people' },
       {
         value: 'prestige',
         label: 'Top institutions / brand names',
-        emoji: '🏆',
       },
-      { value: 'freedom', label: 'Creative freedom & autonomy', emoji: '✨' },
+      { value: 'freedom', label: 'Creative freedom & autonomy' },
       {
         value: 'stability',
         label: 'Stability & work-life balance',
-        emoji: '⚖️',
       },
-      { value: 'learning', label: 'Constant learning & mastery', emoji: '🧠' },
+      { value: 'learning', label: 'Constant learning & mastery' },
     ],
     evaluationCategory: 'work_friction',
   },
@@ -555,18 +508,16 @@ const COLLEGE_QUESTIONS: CollegeQuestion[] = [
     title: 'Approximate annual budget for grad school (tuition + living)?',
     subtitle: 'Helps us recommend realistic programs & scholarships',
     options: [
-      { value: 'under_15l', label: 'Under ₹15L / $18K', emoji: '💰' },
-      { value: '15_35l', label: '₹15–35L / $18–42K', emoji: '💳' },
-      { value: '35_65l', label: '₹35–65L / $42–80K', emoji: '🏦' },
+      { value: 'under_15l', label: 'Under ₹15L / $18K' },
+      { value: '15_35l', label: '₹15–35L / $18–42K' },
+      { value: '35_65l', label: '₹35–65L / $42–80K' },
       {
         value: 'scholarship',
         label: 'Need significant scholarship / funding',
-        emoji: '🎓',
       },
       {
         value: 'flexible',
         label: 'Flexible — show me best-fit options',
-        emoji: '✨',
       },
     ],
     skip: (c) => !isGradSchoolGoal(c),
@@ -628,9 +579,9 @@ function toStep(
 ): DiagnosticStep {
   const options =
     q.dynamicOptions?.(ctx, year) ??
-    q.options?.map((o, i) => ({
-      ...o,
-      emoji: o.emoji ?? CHOICE_EMOJIS[i % CHOICE_EMOJIS.length],
+    q.options?.map((o) => ({
+      value: o.value,
+      label: o.label,
     }));
 
   const intro = typeof q.intro === 'function' ? q.intro(ctx) : q.intro;
@@ -664,7 +615,7 @@ function chapterIntro(
     chapter: section,
     title: section,
     subtitle: meta?.narrative(ctx, year) ?? `Next: ${section}`,
-    intro: `${meta?.emoji ?? '📖'} ${section}`,
+    intro: section,
   };
 }
 
@@ -691,7 +642,7 @@ export function buildCollegeStorySteps(
       chapter: 'Your Story',
       title: `Hey ${ctx.name}, your college discovery starts here`,
       subtitle: `Built for ${ctx.classGroupLabel ?? 'college'} students — not school questionnaires. ${ctx.stream ? `${ctx.stream} at ${institution}` : institution}${goalLine}. Fast, interactive, and tuned to where you actually are.`,
-      intro: '🎓 College Discovery',
+      intro: 'College Discovery',
     },
   ];
 
@@ -721,7 +672,7 @@ export function buildCollegeStorySteps(
     chapter: 'Finale',
     title: 'Ready for your personalized insights',
     subtitle: `We'll combine your answers with your profile${ctx.hasTranscript ? ', transcript' : ''}${ctx.targetDegree ? `, and ${ctx.targetDegree} goal` : ''} into a career map built for you — not a generic school report.`,
-    intro: '✨ Finale',
+    intro: 'Finale',
   });
 
   return steps;

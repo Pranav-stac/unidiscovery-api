@@ -12,8 +12,13 @@ export class CollegesController {
 
   @Get()
   @ApiOperation({ summary: 'List colleges' })
-  list(@Query('country') country?: string, @Query('field') field?: string) {
-    return this.collegesService.list(country, field);
+  list(
+    @Query('country') country?: string,
+    @Query('field') field?: string,
+    @Query('degree') degree?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.collegesService.list(country, field, degree, search);
   }
 
   @Post('recommend')
@@ -26,6 +31,12 @@ export class CollegesController {
   @ApiOperation({ summary: 'Get saved colleges' })
   saved(@CurrentUser() user: AuthenticatedUser) {
     return this.collegesService.saved(user.id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get college by id' })
+  getById(@Param('id') id: string) {
+    return this.collegesService.getById(id);
   }
 
   @Post(':id/save')

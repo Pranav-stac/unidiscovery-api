@@ -9,24 +9,6 @@ import type { StoryProfileContext } from './story-profile.types';
 
 export type { StoryProfileContext } from './story-profile.types';
 
-const SECTION_EMOJI: Record<string, string> = {
-  'Academic Profile': '📚',
-  'Outside the Classroom': '🌟',
-  'Family & Context': '👨‍👩‍👧',
-  'Aptitude & Reasoning': '🧩',
-  'Numerical Aptitude': '🔢',
-  'Logical Reasoning': '🧠',
-  'Verbal Comprehension': '📖',
-  'Work Preference Mapping': '⚖️',
-  'Interest Mapping': '🧭',
-  'Motivators & Values': '💡',
-  'Values & Motivators': '💡',
-  'Working Style': '🎯',
-  'Future Aspiration': '🔮',
-  'Stream & Subject Direction': '🛤️',
-  'Extracurricular & College Direction': '🎓',
-};
-
 const SECTION_NARRATIVE: Record<string, (ctx: StoryProfileContext) => string> =
   {
     'Academic Profile': (c) =>
@@ -62,19 +44,6 @@ const SECTION_NARRATIVE: Record<string, (ctx: StoryProfileContext) => string> =
     'Extracurricular & College Direction': () =>
       'Colleges and careers care about the full you — not just marks. This chapter is about your bigger picture.',
   };
-
-const CHOICE_EMOJIS = [
-  '✨',
-  '🎯',
-  '💡',
-  '🚀',
-  '🤝',
-  '📊',
-  '🎨',
-  '🔬',
-  '💼',
-  '🧠',
-];
 
 function resolveLegacyClassGroup(ctx: StoryProfileContext): ClassGroupType {
   const g = ctx.classGroup;
@@ -151,10 +120,9 @@ function toDiagnosticStep(
   chapter: string,
 ): DiagnosticStep {
   const type = mapQuestionType(q);
-  const options = q.options?.map((o, i) => ({
+  const options = q.options?.map((o) => ({
     value: o.value,
     label: o.label,
-    emoji: CHOICE_EMOJIS[i % CHOICE_EMOJIS.length],
   }));
 
   return {
@@ -186,7 +154,7 @@ function chapterIntro(
     chapter: section,
     title: section,
     subtitle: narrative,
-    intro: `${SECTION_EMOJI[section] ?? '📖'} ${section}`,
+    intro: section,
   };
 }
 
@@ -223,7 +191,7 @@ export function buildStoryDiagnosticSteps(
       chapter: 'Your Story',
       title: `Hey ${ctx.name}, your discovery story begins`,
       subtitle: `A personalized ${levelLabel} journey — interactive chapters, not a boring form. We already know parts of your profile; we'll only ask what's missing.`,
-      intro: '📖 Prologue',
+      intro: 'Prologue',
     },
   ];
 
@@ -256,7 +224,7 @@ export function buildStoryDiagnosticSteps(
     title: 'Almost there!',
     subtitle:
       'AI is ready to weave your answers, profile, and transcript into a personalized insight report.',
-    intro: '✨ Finale',
+    intro: 'Finale',
   });
 
   return steps;

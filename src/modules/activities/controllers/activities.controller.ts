@@ -12,8 +12,20 @@ export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}
 
   @Get()
-  list(@Query('type') type?: ActivityType, @Query('grade') grade?: string) {
-    return this.activitiesService.list(type, grade ? Number(grade) : undefined);
+  list(
+    @Query('type') type?: ActivityType,
+    @Query('grade') grade?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.activitiesService.list({
+      type,
+      grade: grade ? Number(grade) : undefined,
+      search,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 24,
+    });
   }
 
   @Post('recommend')
@@ -24,6 +36,16 @@ export class ActivitiesController {
   @Get('saved')
   saved(@CurrentUser() user: AuthenticatedUser) {
     return this.activitiesService.saved(user.id);
+  }
+
+  @Get(':id')
+  getById(@Param('id') id: string) {
+    return this.activitiesService.getById(id);
+  }
+
+  @Post(':id/overview')
+  overview(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.activitiesService.getOverview(user.id, id);
   }
 
   @Post(':id/save')

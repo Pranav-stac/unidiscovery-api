@@ -14,13 +14,23 @@ export class CollegesService {
     private readonly matchingService: CollegeMatchingService,
   ) {}
 
-  async list(country?: string, field?: string) {
+  async list(country?: string, field?: string, degree?: string, search?: string) {
     return this.prisma.college.findMany({
       where: {
         isActive: true,
         deletedAt: null,
-        ...(country ? { country } : {}),
-        ...(field ? { field: { contains: field, mode: 'insensitive' } } : {}),
+        ...(country ? { country: { equals: country, mode: 'insensitive' as const } } : {}),
+        ...(field ? { field: { contains: field, mode: 'insensitive' as const } } : {}),
+        ...(degree ? { degree: { contains: degree, mode: 'insensitive' as const } } : {}),
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' as const } },
+                { city: { contains: search, mode: 'insensitive' as const } },
+                { description: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
       },
       orderBy: { name: 'asc' },
     });

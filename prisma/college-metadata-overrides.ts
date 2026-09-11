@@ -1,3 +1,5 @@
+import { deriveDefaultCollegeMetadata } from './college-default-metadata';
+
 /** Rich matching metadata keyed by exact college name — used at seed time */
 export interface CollegeMetadataSeed {
   fields?: string[];
@@ -15,13 +17,18 @@ export interface CollegeMetadataSeed {
   qsWorldRank?: number;
   nationalRank?: number;
   examsAccepted?: string[];
+  intakeTerms?: string[];
+  applicationDeadline?: string;
   employmentRate?: number;
   avgPackageInr?: number;
   avgPackageUsd?: number;
   topEmployers?: string[];
   researchIntensity?: string;
   internationalStudentPercent?: number;
+  campusType?: string;
+  studentBodySize?: string;
   idealFor?: string[];
+  notIdealFor?: string[];
   website?: string;
 }
 
@@ -168,25 +175,278 @@ export const COLLEGE_METADATA_OVERRIDES: Record<string, CollegeMetadataSeed> = {
     avgPackageUsd: 110000,
     topEmployers: ['Google', 'Meta', 'Apple', 'Uber'],
     researchIntensity: 'high',
+    intakeTerms: ['Fall', 'Spring'],
+    applicationDeadline: 'Early Nov / Jan regular',
+    campusType: 'Urban research campus',
+    studentBodySize: '15,000',
     idealFor: ['AI/CS specialists', 'Robotics', 'Top US tech careers'],
+    notIdealFor: ['Applicants seeking low-cost regional colleges only'],
     website: 'https://www.cmu.edu',
+  },
+  'University of California, Berkeley': {
+    fields: ['cs', 'engineering', 'data', 'business', 'economics'],
+    programs: ['BS', 'BA', 'MEng'],
+    streams: ['computer-science', 'engineering', 'commerce'],
+    minGradePercent: 94,
+    acceptanceRate: 11,
+    tuitionUsd: 48000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 10,
+    nationalRank: 1,
+    examsAccepted: ['SAT', 'ACT', 'TOEFL', 'AP'],
+    employmentRate: 91,
+    avgPackageUsd: 105000,
+    topEmployers: ['Google', 'Apple', 'Meta', 'Startups'],
+    researchIntensity: 'high',
+    internationalStudentPercent: 16,
+    intakeTerms: ['Fall'],
+    applicationDeadline: 'Nov 30 (UC application)',
+    campusType: 'Public research flagship',
+    studentBodySize: '45,000+',
+    idealFor: ['Bay Area tech path', 'Public Ivy seekers', 'EECS & data science'],
+    notIdealFor: ['Students needing small class sizes'],
+    website: 'https://www.berkeley.edu',
+  },
+  'Georgia Institute of Technology': {
+    fields: ['engineering', 'cs', 'math', 'business'],
+    programs: ['BS', 'Co-op'],
+    streams: ['engineering', 'computer-science'],
+    minGradePercent: 92,
+    acceptanceRate: 17,
+    tuitionUsd: 34000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 97,
+    examsAccepted: ['SAT', 'ACT', 'TOEFL'],
+    employmentRate: 94,
+    avgPackageUsd: 88000,
+    topEmployers: ['Delta', 'Google', 'Boeing', 'Coca-Cola'],
+    researchIntensity: 'high',
+    intakeTerms: ['Fall', 'Spring'],
+    applicationDeadline: 'Jan 4 (Early) / Apr 1',
+    campusType: 'Urban STEM campus',
+    idealFor: ['Co-op & internships', 'Value STEM in US', 'Engineering depth'],
+    website: 'https://www.gatech.edu',
+  },
+  'University of Illinois Urbana-Champaign': {
+    fields: ['cs', 'engineering', 'ai', 'business'],
+    programs: ['BS', 'MS'],
+    streams: ['computer-science', 'engineering'],
+    minGradePercent: 91,
+    acceptanceRate: 45,
+    tuitionUsd: 38000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 64,
+    examsAccepted: ['SAT', 'ACT', 'TOEFL'],
+    employmentRate: 90,
+    avgPackageUsd: 82000,
+    topEmployers: ['Microsoft', 'Amazon', 'Capital One', 'Adobe'],
+    researchIntensity: 'high',
+    idealFor: ['CS @ Illinois reputation', 'Strong Midwest value', 'Research + industry'],
+    website: 'https://illinois.edu',
+  },
+  'University of Cambridge': {
+    fields: ['science', 'math', 'engineering', 'humanities', 'cs'],
+    programs: ['BA', 'MEng', 'MPhil'],
+    streams: ['science', 'engineering', 'liberal-arts'],
+    minGradePercent: 97,
+    acceptanceRate: 18,
+    tuitionUsd: 47000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 2,
+    examsAccepted: ['UCAS', 'A-Levels', 'IB', 'STEP'],
+    employmentRate: 92,
+    avgPackageUsd: 68000,
+    topEmployers: ['McKinsey', 'Google', 'BBC', 'Research labs'],
+    researchIntensity: 'high',
+    internationalStudentPercent: 40,
+    intakeTerms: ['October'],
+    applicationDeadline: 'UCAS 15 Oct (Oxbridge)',
+    campusType: 'Collegiate university',
+    idealFor: ['Tripos system learners', 'Math & natural sciences', 'UK elite path'],
+    website: 'https://www.cam.ac.uk',
+  },
+  'Imperial College London': {
+    fields: ['engineering', 'cs', 'medicine', 'science'],
+    programs: ['BEng', 'MEng', 'MBBS'],
+    streams: ['engineering', 'computer-science', 'medicine'],
+    minGradePercent: 96,
+    acceptanceRate: 14,
+    tuitionUsd: 52000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 6,
+    examsAccepted: ['UCAS', 'A-Levels', 'IB', 'IELTS'],
+    employmentRate: 93,
+    avgPackageUsd: 72000,
+    topEmployers: ['Goldman Sachs', 'Google', 'NHS', 'Arup'],
+    researchIntensity: 'high',
+    idealFor: ['STEM-only focus', 'London industry links', 'Medicine & engineering'],
+    website: 'https://www.imperial.ac.uk',
+  },
+  'Indian Institute of Technology Delhi': {
+    fields: ['engineering', 'cs', 'technology', 'ai'],
+    programs: ['B.Tech', 'M.Tech', 'Dual Degree'],
+    streams: ['engineering', 'computer-science'],
+    minCgpa: 8.5,
+    minGradePercent: 92,
+    acceptanceRate: 2,
+    tuitionInr: 280000,
+    scholarshipsAvailable: true,
+    nationalRank: 2,
+    examsAccepted: ['JEE Advanced', 'GATE'],
+    employmentRate: 96,
+    avgPackageInr: 2100000,
+    topEmployers: ['Google', 'Microsoft', 'Goldman Sachs', 'Qualcomm'],
+    researchIntensity: 'high',
+    intakeTerms: ['July'],
+    idealFor: ['Delhi NCR students', 'Top JEE rankers', 'CS & electrical focus'],
+    website: 'https://home.iitd.ac.in',
+  },
+  'Indian Institute of Technology Madras': {
+    fields: ['engineering', 'cs', 'research', 'ai'],
+    programs: ['B.Tech', 'M.Tech'],
+    streams: ['engineering', 'computer-science'],
+    minCgpa: 8.2,
+    minGradePercent: 91,
+    acceptanceRate: 2,
+    tuitionInr: 260000,
+    nationalRank: 1,
+    examsAccepted: ['JEE Advanced'],
+    employmentRate: 95,
+    avgPackageInr: 2000000,
+    topEmployers: ['Google', 'Microsoft', 'Intel', 'Startups'],
+    researchIntensity: 'high',
+    idealFor: ['Research & startups', 'South India IIT choice', 'Core engineering'],
+    website: 'https://www.iitm.ac.in',
+  },
+  'Birla Institute of Technology and Science, Pilani': {
+    fields: ['engineering', 'cs', 'sciences', 'pharmacy'],
+    programs: ['B.E.', 'M.E.', 'Dual Degree'],
+    streams: ['engineering', 'computer-science', 'science'],
+    minGradePercent: 88,
+    acceptanceRate: 8,
+    tuitionInr: 550000,
+    scholarshipsAvailable: true,
+    examsAccepted: ['BITSAT'],
+    employmentRate: 88,
+    avgPackageInr: 1500000,
+    topEmployers: ['Microsoft', 'Amazon', 'Goldman Sachs', 'Startups'],
+    idealFor: ['Flexible dual degrees', 'Study abroad semester', 'Strong CS culture'],
+    website: 'https://www.bits-pilani.ac.in',
+  },
+  'Columbia University': {
+    fields: ['engineering', 'finance', 'cs', 'humanities', 'journalism'],
+    programs: ['BA', 'BS', 'BEng'],
+    streams: ['engineering', 'liberal-arts', 'commerce'],
+    minGradePercent: 97,
+    acceptanceRate: 4,
+    tuitionUsd: 68000,
+    needBlind: true,
+    qsWorldRank: 23,
+    examsAccepted: ['SAT', 'ACT', 'TOEFL'],
+    employmentRate: 92,
+    avgPackageUsd: 95000,
+    topEmployers: ['Goldman Sachs', 'Google', 'Media firms', 'UN agencies'],
+    researchIntensity: 'high',
+    campusType: 'Ivy League urban campus',
+    idealFor: ['NYC network', 'Finance + engineering dual interests', 'Global city experience'],
+    website: 'https://www.columbia.edu',
+  },
+  'National University of Singapore': {
+    fields: ['business', 'technology', 'design', 'science', 'law'],
+    programs: ['Bachelor', 'Honours'],
+    streams: ['engineering', 'commerce', 'computer-science'],
+    minGradePercent: 92,
+    acceptanceRate: 10,
+    tuitionUsd: 32000,
+    scholarshipsAvailable: true,
+    qsWorldRank: 8,
+    examsAccepted: ['IB', 'A-Levels', 'CBSE', 'IELTS'],
+    employmentRate: 92,
+    avgPackageUsd: 68000,
+    topEmployers: ['Grab', 'Google', 'DBS', 'Government'],
+    internationalStudentPercent: 30,
+    idealFor: ['Asia-Pacific hub', 'Business + tech blend', 'Government scholarship paths'],
+    website: 'https://www.nus.edu.sg',
+  },
+  'ETH Zurich': {
+    fields: ['engineering', 'science', 'math', 'physics', 'cs'],
+    programs: ['BSc', 'MSc'],
+    streams: ['engineering', 'science', 'computer-science'],
+    minGradePercent: 94,
+    acceptanceRate: 27,
+    tuitionUsd: 1500,
+    scholarshipsAvailable: true,
+    qsWorldRank: 7,
+    examsAccepted: ['Swiss Matura', 'IB', 'German proficiency'],
+    employmentRate: 94,
+    avgPackageUsd: 90000,
+    topEmployers: ['Google', 'ABB', 'Novartis', 'CERN partners'],
+    researchIntensity: 'high',
+    idealFor: ['Low tuition Europe', 'Math & physics excellence', 'Research careers'],
+    website: 'https://ethz.ch',
+  },
+  'Ashoka University': {
+    fields: ['humanities', 'social', 'economics', 'arts', 'sciences'],
+    programs: ['BA', 'BSc', 'Young India Fellowship pathway'],
+    streams: ['liberal-arts', 'commerce', 'science'],
+    minGradePercent: 85,
+    acceptanceRate: 15,
+    tuitionInr: 950000,
+    scholarshipsAvailable: true,
+    examsAccepted: ['Ashoka Aptitude Test', 'SAT/ACT optional', 'Interview'],
+    employmentRate: 78,
+    avgPackageInr: 1200000,
+    topEmployers: ['Consulting', 'NGOs', 'Media', 'Grad school'],
+    idealFor: ['Liberal arts exploration', 'Critical thinking focus', 'Interdisciplinary learners'],
+    notIdealFor: ['Single-track vocational training seekers'],
+    website: 'https://www.ashoka.edu.in',
+  },
+  'Delhi University': {
+    fields: ['commerce', 'arts', 'history', 'economics', 'sciences'],
+    programs: ['BA', 'BSc', 'BCom'],
+    streams: ['commerce', 'liberal-arts', 'science'],
+    minGradePercent: 72,
+    acceptanceRate: 55,
+    tuitionInr: 25000,
+    scholarshipsAvailable: true,
+    examsAccepted: ['CUET', 'Board merit'],
+    employmentRate: 62,
+    avgPackageInr: 450000,
+    topEmployers: ['Government', 'Banking', 'Teaching', 'Civil services prep'],
+    campusType: 'Public collegiate system',
+    idealFor: ['Affordable quality education', 'Delhi-based students', 'Arts & commerce'],
+    website: 'https://www.du.ac.in',
   },
 };
 
-export function applyCollegeMetadataOverrides<T extends { name: string; metadata?: Record<string, unknown> }>(
-  college: T,
-): T {
+export function applyCollegeMetadataOverrides<
+  T extends {
+    name: string;
+    country: string;
+    city?: string | null;
+    degree?: string | null;
+    field?: string | null;
+    description?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+>(college: T): T {
+  const defaults = deriveDefaultCollegeMetadata(college);
   const override = COLLEGE_METADATA_OVERRIDES[college.name] ?? {};
   const base = college.metadata ?? {};
-  return {
-    ...college,
-    metadata: {
-      ...base,
-      ...override,
-      fields: override.fields ?? (base.fields as string[]) ?? [],
-      programs: override.programs ?? (base.programs as string[]) ?? [],
-      streams: override.streams ?? (base.streams as string[]) ?? [],
-      tags: [...new Set([...((base.tags as string[]) ?? []), ...(override.tags ?? [])])],
-    },
+
+  const merged: CollegeMetadataSeed = {
+    ...defaults,
+    ...Object.fromEntries(Object.entries(base).filter(([, v]) => v != null)),
+    ...override,
+    fields: override.fields ?? (base.fields as string[]) ?? defaults.fields ?? [],
+    programs: override.programs ?? defaults.programs ?? [],
+    streams: override.streams ?? defaults.streams ?? [],
+    tags: [...new Set([...((base.tags as string[]) ?? []), ...(defaults.tags ?? []), ...(override.tags ?? [])])],
+    idealFor: override.idealFor ?? defaults.idealFor,
+    notIdealFor: override.notIdealFor ?? defaults.notIdealFor,
+    topEmployers: override.topEmployers ?? defaults.topEmployers,
+    examsAccepted: override.examsAccepted ?? defaults.examsAccepted,
   };
+
+  return { ...college, metadata: merged as Record<string, unknown> };
 }

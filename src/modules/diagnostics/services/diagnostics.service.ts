@@ -1,10 +1,19 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { DiagnosticSessionStatus, DiagnosticTemplate, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 
 import { buildStoryDiagnosticSteps } from '../data/legacy-story.adapter';
+import {
+  validateDiagnosticAnswers,
+  validateSingleTextAnswer,
+} from './answer-quality.validator';
 
 export interface DiagnosticStep {
   id: string;
@@ -201,6 +210,9 @@ export class DiagnosticsService {
     }
 
     const answers = latestSession.answers as Record<string, unknown>;
+    const steps = await this.getStepsForUser(userId);
+    await this.assertAnswerQuality(answers, steps, userId);
+
     const report = await this.generateReport(answers, userId);
 
     await this.prisma.$transaction(async (tx) => {
@@ -347,11 +359,11 @@ export class DiagnosticsService {
         title: 'What energizes you most right now?',
         subtitle: 'Swipe through — no wrong answers',
         options: [
-          { value: 'build', label: 'Building things', emoji: '🛠️' },
-          { value: 'help', label: 'Helping people', emoji: '🤝' },
-          { value: 'create', label: 'Creating art/media', emoji: '🎨' },
-          { value: 'analyze', label: 'Solving puzzles', emoji: '🧩' },
-          { value: 'lead', label: 'Leading teams', emoji: '🚀' },
+          { value: 'build', label: 'Building things' },
+          { value: 'help', label: 'Helping people' },
+          { value: 'create', label: 'Creating art/media' },
+          { value: 'analyze', label: 'Solving puzzles' },
+          { value: 'lead', label: 'Leading teams' },
         ],
       },
       {
@@ -360,12 +372,12 @@ export class DiagnosticsService {
         title: 'Which subjects feel most natural?',
         subtitle: 'Pick up to 3',
         options: [
-          { value: 'math', label: 'Math', emoji: '📐' },
-          { value: 'science', label: 'Science', emoji: '🔬' },
-          { value: 'english', label: 'English', emoji: '📚' },
-          { value: 'history', label: 'History', emoji: '🏛️' },
-          { value: 'cs', label: 'Computer Science', emoji: '💻' },
-          { value: 'arts', label: 'Arts', emoji: '🎭' },
+          { value: 'math', label: 'Math' },
+          { value: 'science', label: 'Science' },
+          { value: 'english', label: 'English' },
+          { value: 'history', label: 'History' },
+          { value: 'cs', label: 'Computer Science' },
+          { value: 'arts', label: 'Arts' },
         ],
       },
       {
@@ -398,6 +410,19 @@ export class DiagnosticsService {
 
     if (!session) {
       throw new Error('Session not found');
+    }
+
+    const steps = await this.getStepsForUser(userId);
+    const step = steps.find((s) => s.id === stepId);
+    if (step) {
+      const textIssue = validateSingleTextAnswer(step, answer);
+      if (textIssue) {
+        throw new BadRequestException({
+          message: textIssue.message,
+          code: textIssue.code,
+          issues: textIssue.issues,
+        });
+      }
     }
 
     const answers = {
@@ -458,16 +483,16 @@ export class DiagnosticsService {
         : 'What matters most in your ideal college or career?',
       options: ctx?.isCollege
         ? [
-            { value: 'internship', label: 'A great internship', emoji: '💼' },
-            { value: 'skills', label: 'Mastering key skills', emoji: '🧠' },
-            { value: 'network', label: 'Building connections', emoji: '🤝' },
-            { value: 'clarity', label: 'Clear career direction', emoji: '🧭' },
+            { value: 'internship', label: 'A great internship' },
+            { value: 'skills', label: 'Mastering key skills' },
+            { value: 'network', label: 'Building connections' },
+            { value: 'clarity', label: 'Clear career direction' },
           ]
         : [
-            { value: 'impact', label: 'Making an impact', emoji: '🌍' },
-            { value: 'income', label: 'Financial stability', emoji: '💰' },
-            { value: 'creativity', label: 'Creative freedom', emoji: '✨' },
-            { value: 'prestige', label: 'Top institutions', emoji: '🏆' },
+            { value: 'impact', label: 'Making an impact' },
+            { value: 'income', label: 'Financial stability' },
+            { value: 'creativity', label: 'Creative freedom' },
+            { value: 'prestige', label: 'Top institutions' },
           ],
     };
 
@@ -479,7 +504,7 @@ export class DiagnosticsService {
         "type": "choice",
         "title": "string",
         "subtitle": "string optional",
-        "options": [{"value":"string","label":"string","emoji":"string"}]
+        "options": [{"value":"string","label":"string",}]
       }`,
       fallback,
     });
@@ -496,6 +521,9 @@ export class DiagnosticsService {
     }
 
     const answers = session.answers as Record<string, unknown>;
+    const steps = await this.getStepsForUser(userId);
+    await this.assertAnswerQuality(answers, steps, userId);
+
     const report = await this.generateReport(answers, userId);
 
     const profile = await this.prisma.studentProfile.findUnique({
@@ -561,6 +589,69 @@ export class DiagnosticsService {
     this.invalidateStepsCache(userId);
 
     return report;
+  }
+
+  private async assertAnswerQuality(
+    answers: Record<string, unknown>,
+    steps: DiagnosticStep[],
+    userId?: string,
+  ): Promise<void> {
+    const ruleResult = validateDiagnosticAnswers(answers, steps);
+    if (!ruleResult.valid) {
+      throw new UnprocessableEntityException({
+        message: ruleResult.message,
+        code: ruleResult.code,
+        issues: ruleResult.issues,
+      });
+    }
+
+    if (!this.geminiService.isConfigured()) {
+      return;
+    }
+
+    const ctx = userId ? await this.getProfileContext(userId) : null;
+    const aiCheck = await this.geminiService.generateStructured<{
+      valid: boolean;
+      message: string;
+      issues: string[];
+    }>({
+      systemPrompt: `You are a quality gate for UniDiscover's student career diagnostic. Decide if answers are genuine enough to produce meaningful insights.
+
+Mark valid=false when:
+- Open-text answers are gibberish, placeholders (asdf, test, idk), or clearly not engaged
+- Aptitude answers are nonsense or show no real attempt
+- Answers look randomly clicked (same option repeated, contradictory without explanation)
+- Overall engagement is too low for a credible report
+
+When invalid, message must warmly ask the student to retake and answer thoughtfully. Do not generate career advice.`,
+      userPrompt: JSON.stringify({
+        answers,
+        questionCount: steps.filter(
+          (s) => s.stepKind === 'question' || s.type !== 'chapter',
+        ).length,
+        profile: ctx
+          ? { name: ctx.name, classGroup: ctx.classGroup, stream: ctx.stream }
+          : null,
+      }),
+      schemaDescription: `{
+        "valid": "boolean — true only if answers are thoughtful enough",
+        "message": "string — retake guidance if invalid, empty if valid",
+        "issues": ["string — specific problems found"]
+      }`,
+      fallback: { valid: true, message: '', issues: [] },
+    });
+
+    if (!aiCheck.valid) {
+      throw new UnprocessableEntityException({
+        message:
+          aiCheck.message ||
+          'Your answers do not look complete enough for a reliable report. Please retake the diagnostic and answer each question thoughtfully.',
+        code: 'ANSWERS_INVALID',
+        issues: aiCheck.issues?.length
+          ? aiCheck.issues
+          : ['AI quality check failed'],
+      });
+    }
   }
 
   private sanitizeText(value: string): string {

@@ -43,7 +43,7 @@ export async function createApp(
   app.setGlobalPrefix(apiPrefix);
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Diagnostic Test API')
+    .setTitle('AI Discovery API')
     .setDescription(
       'API for diagnostics, college matching, applications, and career planning',
     )
