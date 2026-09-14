@@ -27,7 +27,10 @@ export async function createApp(
     'http://localhost:3000',
   ]);
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
       if (!origin) return callback(null, true);
       if (corsOrigins.includes(origin)) return callback(null, true);
       if (/^https:\/\/[\w-]+\.vercel\.app$/.test(origin)) return callback(null, true);

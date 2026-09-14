@@ -25,6 +25,18 @@ type ChatIntentPlan = {
   collegeName?: string;
 };
 
+type CollegeResearchPayload = {
+  results: Array<{
+    score: number;
+    sources?: Array<Record<string, unknown>>;
+    college: { id: string; name: string };
+    [key: string]: unknown;
+  }>;
+  criteria: CollegeResearchDto;
+  generatedAt: string;
+  notice: string;
+};
+
 interface ResearchedCollege {
   name: string;
   country: string;
@@ -220,7 +232,7 @@ export class CollegesService {
     userId: string,
     criteria: CollegeResearchDto,
     options?: { quick?: boolean; skipCache?: boolean },
-  ) {
+  ): Promise<CollegeResearchPayload> {
     const cacheKey = `college-research:${userId}:${JSON.stringify({
       countries: criteria.countries,
       courses: criteria.courses,
@@ -231,7 +243,7 @@ export class CollegesService {
       excludeNames: criteria.excludeNames,
     })}`;
     if (!options?.skipCache) {
-      const cached = await this.cacheService.get<Awaited<ReturnType<CollegesService['research']>>>(cacheKey);
+      const cached = await this.cacheService.get<CollegeResearchPayload>(cacheKey);
       if (cached) return cached;
     }
 

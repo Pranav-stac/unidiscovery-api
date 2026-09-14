@@ -385,8 +385,8 @@ Student: ${this.profileContext.buildContextText(profile)}`,
       : null;
 
     const recommendations = recommended.slice(0, 12).map((row) => ({
-      id: row.activity.id,
-      title: row.activity.title,
+      id: String(row.activity.id),
+      title: String(row.activity.title),
       type: row.activity.type,
       score: row.score,
       reasons: row.reasons,
@@ -395,8 +395,8 @@ Student: ${this.profileContext.buildContextText(profile)}`,
     }));
 
     const saved = savedRows.slice(0, 12).map((row) => ({
-      id: row.activity.id,
-      title: row.activity.title,
+      id: String(row.activity.id),
+      title: String(row.activity.title),
       type: row.activity.type,
       organization: (row.activity as { details?: { organization?: string } }).details?.organization,
       deadline: (row.activity as { details?: { deadline?: string } }).details?.deadline,
