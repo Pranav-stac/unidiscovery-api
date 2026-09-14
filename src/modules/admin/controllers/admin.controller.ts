@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../../../common/decorators/auth.decorators';
 import { ROLES } from '../../../common/constants';
+import { AdminOpsService } from '../services/admin-ops.service';
 import { AdminService } from '../services/admin.service';
 import {
   CreateActivityDto,
@@ -35,9 +36,15 @@ import {
   UpdateMentorConnectionDto,
   UpdatePlatformConfigDto,
   UpdateSchoolDto,
+  UpdateStudentProfileDto,
   UpdateSubjectDto,
   UpdateTutoringQuestionDto,
   UpdateUserDto,
+  UpdateApplicationDocumentDto,
+  CreateParentLinkDto,
+  UpdateParentLinkDto,
+  BulkImportCollegesDto,
+  BulkImportActivitiesDto,
 } from '../dto/admin.dto';
 
 @ApiTags('Admin')
@@ -45,12 +52,19 @@ import {
 @Roles(ROLES.ADMIN, ROLES.PROGRAM_MANAGER)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly adminOps: AdminOpsService,
+  ) {}
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Admin dashboard stats' })
-  getDashboard() {
-    return this.adminService.getDashboardStats();
+  async getDashboard() {
+    const [base, extended] = await Promise.all([
+      this.adminService.getDashboardStats(),
+      this.adminOps.getExtendedStats(),
+    ]);
+    return { ...base, ...extended };
   }
 
   // ─── Users ─────────────────────────────────────────────────────────────────
@@ -396,5 +410,267 @@ export class AdminController {
     @Body() dto: UpdateMentorConnectionDto,
   ) {
     return this.adminService.updateMentorConnection(id, dto);
+  }
+
+  // ─── Student profiles ──────────────────────────────────────────────────────
+
+  @Get('profiles')
+  listProfiles(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+  ) {
+    return this.adminOps.listStudentProfiles(Number(page), Number(limit), search);
+  }
+
+  @Get('profiles/:userId')
+  getProfile(@Param('userId') userId: string) {
+    return this.adminOps.getStudentProfile(userId);
+  }
+
+  @Patch('profiles/:userId')
+  updateProfile(@Param('userId') userId: string, @Body() dto: UpdateStudentProfileDto) {
+    return this.adminOps.updateStudentProfile(userId, dto);
+  }
+
+  // ─── Applications ────────────────────────────────────────────────────────────
+
+  @Get('application-documents')
+  listApplicationDocuments(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+    @Query('userId') userId?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.adminOps.listApplicationDocuments(
+      Number(page),
+      Number(limit),
+      search,
+      userId,
+      type,
+    );
+  }
+
+  @Get('application-documents/:id')
+  getApplicationDocument(@Param('id') id: string) {
+    return this.adminOps.getApplicationDocument(id);
+  }
+
+  @Patch('application-documents/:id')
+  updateApplicationDocument(
+    @Param('id') id: string,
+    @Body() dto: UpdateApplicationDocumentDto,
+  ) {
+    return this.adminOps.updateApplicationDocument(id, dto);
+  }
+
+  @Delete('application-documents/:id')
+  deleteApplicationDocument(@Param('id') id: string) {
+    return this.adminOps.deleteApplicationDocument(id);
+  }
+
+  // ─── Activity planner ──────────────────────────────────────────────────────
+
+  @Get('activity-plan-items')
+  listActivityPlanItems(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.adminOps.listActivityPlanItems(Number(page), Number(limit), userId, status);
+  }
+
+  @Delete('activity-plan-items/:id')
+  deleteActivityPlanItem(@Param('id') id: string) {
+    return this.adminOps.deleteActivityPlanItem(id);
+  }
+
+  @Get('saved-activities')
+  listSavedActivities(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+  ) {
+    return this.adminOps.listSavedActivities(Number(page), Number(limit), userId);
+  }
+
+  // ─── College recommendations ─────────────────────────────────────────────────
+
+  @Get('college-recommendations')
+  listCollegeRecommendations(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+  ) {
+    return this.adminOps.listCollegeRecommendations(Number(page), Number(limit), userId);
+  }
+
+  // ─── Homeschooling ops ───────────────────────────────────────────────────────
+
+  @Get('homeschool-progress')
+  listHomeschoolProgress(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminOps.listHomeschoolProgress(Number(page), Number(limit), userId, search);
+  }
+
+  @Delete('homeschool-progress/:id')
+  deleteHomeschoolProgress(@Param('id') id: string) {
+    return this.adminOps.deleteHomeschoolProgress(id);
+  }
+
+  @Get('homeschool-syllabi')
+  listHomeschoolSyllabi(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('board') board?: string,
+  ) {
+    return this.adminOps.listHomeschoolSyllabi(Number(page), Number(limit), board);
+  }
+
+  @Delete('homeschool-syllabi/:id')
+  deleteHomeschoolSyllabus(@Param('id') id: string) {
+    return this.adminOps.deleteHomeschoolSyllabus(id);
+  }
+
+  // ─── Parent links ────────────────────────────────────────────────────────────
+
+  @Get('parent-links')
+  listParentLinks(@Query('page') page = '1', @Query('limit') limit = '20') {
+    return this.adminOps.listParentLinks(Number(page), Number(limit));
+  }
+
+  @Post('parent-links')
+  createParentLink(@Body() dto: CreateParentLinkDto) {
+    return this.adminOps.createParentLink(dto);
+  }
+
+  @Patch('parent-links/:id')
+  updateParentLink(@Param('id') id: string, @Body() dto: UpdateParentLinkDto) {
+    return this.adminOps.updateParentLink(id, dto);
+  }
+
+  @Delete('parent-links/:id')
+  deleteParentLink(@Param('id') id: string) {
+    return this.adminOps.deleteParentLink(id);
+  }
+
+  // ─── Job readiness ─────────────────────────────────────────────────────────
+
+  @Get('job-assets')
+  listJobAssets(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+  ) {
+    return this.adminOps.listJobAssets(Number(page), Number(limit), userId);
+  }
+
+  @Delete('job-assets/:id')
+  deleteJobAsset(@Param('id') id: string) {
+    return this.adminOps.deleteJobAsset(id);
+  }
+
+  // ─── Tutoring analytics ──────────────────────────────────────────────────────
+
+  @Get('tutoring-attempts')
+  listTutoringAttempts(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+    @Query('testType') testType?: string,
+  ) {
+    return this.adminOps.listTutoringAttempts(Number(page), Number(limit), userId, testType);
+  }
+
+  @Get('tutoring-sessions')
+  listTutoringSessions(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+  ) {
+    return this.adminOps.listTutoringSessions(Number(page), Number(limit), userId);
+  }
+
+  // ─── Diagnostic results ──────────────────────────────────────────────────────
+
+  @Get('diagnostic-results')
+  listDiagnosticResults(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+  ) {
+    return this.adminOps.listDiagnosticResults(Number(page), Number(limit), userId);
+  }
+
+  @Get('diagnostic-results/:sessionId')
+  getDiagnosticResult(@Param('sessionId') sessionId: string) {
+    return this.adminOps.getDiagnosticResult(sessionId);
+  }
+
+  // ─── UK compliance ─────────────────────────────────────────────────────────
+
+  @Get('compliance/gatsby')
+  listGatsbyLogs(@Query('page') page = '1', @Query('limit') limit = '20') {
+    return this.adminOps.listGatsbyLogs(Number(page), Number(limit));
+  }
+
+  @Get('compliance/ceiag')
+  listCeiagEncounters(@Query('page') page = '1', @Query('limit') limit = '20') {
+    return this.adminOps.listCeiagEncounters(Number(page), Number(limit));
+  }
+
+  @Get('compliance/ucas')
+  listUcasApplications(@Query('page') page = '1', @Query('limit') limit = '20') {
+    return this.adminOps.listUcasApplications(Number(page), Number(limit));
+  }
+
+  // ─── Bulk & sync ─────────────────────────────────────────────────────────────
+
+  @Post('activities/sync')
+  syncActivities(@Query('scrape') scrape?: string) {
+    return this.adminOps.syncActivities(scrape === '1' || scrape === 'true');
+  }
+
+  @Post('colleges/import')
+  bulkImportColleges(@Body() dto: BulkImportCollegesDto) {
+    return this.adminOps.bulkImportColleges(dto);
+  }
+
+  @Post('activities/import')
+  bulkImportActivities(@Body() dto: BulkImportActivitiesDto) {
+    return this.adminOps.bulkImportActivities(dto);
+  }
+
+  // ─── Notifications ─────────────────────────────────────────────────────────
+
+  @Get('notifications/stats')
+  notificationStats() {
+    return this.adminOps.getNotificationStats();
+  }
+
+  @Get('notifications')
+  listNotifications(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+    @Query('eventType') eventType?: string,
+  ) {
+    return this.adminOps.listNotifications(Number(page), Number(limit), { userId, eventType });
+  }
+
+  @Get('notification-deliveries')
+  listNotificationDeliveries(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('status') status?: string,
+    @Query('channel') channel?: string,
+  ) {
+    return this.adminOps.listNotificationDeliveries(Number(page), Number(limit), { status, channel });
   }
 }

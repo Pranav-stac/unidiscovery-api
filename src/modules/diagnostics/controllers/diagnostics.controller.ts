@@ -40,6 +40,14 @@ export class DiagnosticsController {
     return this.diagnosticsService.retakeSession(user.id);
   }
 
+  @Post('dev-fill')
+  @ApiOperation({
+    summary: 'Development only: fill all diagnostic answers with valid test data',
+  })
+  devFill(@CurrentUser() user: AuthenticatedUser) {
+    return this.diagnosticsService.devFillSession(user.id);
+  }
+
   @Post('refresh-insights')
   @ApiOperation({
     summary: 'Regenerate AI insights from profile + last answers',

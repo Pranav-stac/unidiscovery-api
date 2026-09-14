@@ -226,3 +226,49 @@ export class CreateCounselorAssignmentDto {
 export class UpdateMentorConnectionDto {
   @IsEnum(MentorConnectionStatus) status!: MentorConnectionStatus;
 }
+
+export class UpdateStudentProfileDto {
+  @IsOptional() @IsInt() grade?: number;
+  @IsOptional() @IsString() classGroup?: string;
+  @IsOptional() @IsString() stream?: string;
+  @IsOptional() @IsString() country?: string;
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() school?: string;
+  @IsOptional() @IsString() board?: string;
+  @IsOptional() @IsArray() interests?: string[];
+  @IsOptional() @IsArray() strengths?: string[];
+  @IsOptional() @IsArray() subjects?: string[];
+  @IsOptional() @IsString() targetDegree?: string;
+  @IsOptional() @IsArray() targetCountries?: string[];
+  @IsOptional() @IsBoolean() onboardingCompleted?: boolean;
+  @IsOptional() @IsBoolean() diagnosticCompleted?: boolean;
+  @IsOptional() @IsInt() onboardingStep?: number;
+  @IsOptional() goals?: unknown;
+  @IsOptional() preferences?: unknown;
+}
+
+export class UpdateApplicationDocumentDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() content?: string;
+  @IsOptional() metadata?: unknown;
+}
+
+export class CreateParentLinkDto {
+  @IsString() parentId!: string;
+  @IsString() studentId!: string;
+  @IsOptional() @IsString() relationship?: string;
+  @IsOptional() @IsBoolean() consentGiven?: boolean;
+}
+
+export class UpdateParentLinkDto {
+  @IsOptional() @IsString() relationship?: string;
+  @IsOptional() @IsBoolean() consentGiven?: boolean;
+}
+
+export class BulkImportCollegesDto {
+  @IsArray() items!: CreateCollegeDto[];
+}
+
+export class BulkImportActivitiesDto {
+  @IsArray() items!: CreateActivityDto[];
+}

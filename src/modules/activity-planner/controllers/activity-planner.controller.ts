@@ -45,6 +45,11 @@ export class ActivityPlannerController {
     return this.plannerService.list(user.id);
   }
 
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthenticatedUser) {
+    return this.plannerService.dashboard(user.id);
+  }
+
   @Get('competitions')
   competitions() {
     return this.plannerService.listCompetitions();

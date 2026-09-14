@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { ProfilesRepository } from '../../../infrastructure/database/repositories/profiles.repository';
 import {
   GeminiService,
   GeminiApiError,
 } from '../../../infrastructure/ai/gemini/gemini.service';
+import { CacheService } from '../../../infrastructure/cache/cache.service';
+
+const DASHBOARD_CACHE_TTL = 45;
 
 export interface JourneyStep {
   id: string;
@@ -20,6 +24,27 @@ export interface UploadedAcademicFile {
   mimetype: string;
   originalname: string;
   size?: number;
+}
+
+export interface StudentMemoryDocument {
+  id: string;
+  name: string;
+  mimeType: string;
+  documentType:
+    | 'transcript'
+    | 'cv'
+    | 'language_test'
+    | 'certificate'
+    | 'award'
+    | 'recommendation'
+    | 'other';
+  summary: string;
+  facts: string[];
+  skills: string[];
+  languages: string[];
+  certifications: string[];
+  embedding: number[];
+  createdAt: string;
 }
 
 export interface ParsedAcademicDoc {
@@ -74,9 +99,20 @@ export class ProfilesService {
     private readonly profilesRepository: ProfilesRepository,
     private readonly prisma: PrismaService,
     private readonly geminiService: GeminiService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async getDashboard(userId: string) {
+    const cacheKey = `dashboard:${userId}`;
+    const cached = await this.cacheService.get<Awaited<ReturnType<ProfilesService['buildDashboard']>>>(cacheKey);
+    if (cached) return cached;
+
+    const result = await this.buildDashboard(userId);
+    await this.cacheService.set(cacheKey, result, DASHBOARD_CACHE_TTL);
+    return result;
+  }
+
+  private async buildDashboard(userId: string) {
     const profile = await this.profilesRepository.findByUserId(userId);
 
     const [
@@ -134,7 +170,10 @@ export class ProfilesService {
               ? diagnosticDone
                 ? 100
                 : 50
-              : Math.min(100, Math.round(((profile?.onboardingStep ?? 0) / 3) * 100)),
+              : Math.min(
+                  100,
+                  Math.round(((profile?.onboardingStep ?? 0) / 3) * 100),
+                ),
       },
       {
         id: 'career-map',
@@ -369,6 +408,186 @@ For engineering masters docs infer program like Computer Science, AI, Data Scien
 
     await this.mergeParsedIntoProfile(userId, doc);
     return doc;
+  }
+
+  async parseContextDocument(userId: string, file: UploadedAcademicFile) {
+    if (!file?.buffer?.length) {
+      return { error: 'No file received. Please try uploading again.' };
+    }
+
+    const mime = this.resolveDocumentMime(file);
+    const allowed = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/jpg',
+    ];
+    if (!allowed.includes(mime)) {
+      return { error: `Unsupported file type: ${mime}. Use PDF or image.` };
+    }
+
+    const fallback = {
+      documentType: 'other' as const,
+      summary: `${file.originalname} was uploaded but could not be fully parsed without AI.`,
+      facts: [] as string[],
+      skills: [] as string[],
+      languages: [] as string[],
+      certifications: [] as string[],
+      academics: undefined as
+        | {
+            institution?: string;
+            program?: string;
+            board?: string;
+            cgpa?: number;
+            percentage?: number;
+            subjects?: string[];
+          }
+        | undefined,
+    };
+
+    let parsed: typeof fallback;
+    try {
+      parsed = await this.geminiService.parseDocument(
+        file.buffer.toString('base64'),
+        mime,
+        `Read this student document and convert it into reusable admissions context.
+Classify it as transcript, cv, language_test, certificate, award, recommendation, or other.
+Extract only facts explicitly present. Summarize concrete achievements, dates, scores, roles, projects, skills, languages, certifications, and academic details. Do not infer credentials.`,
+        '{ documentType, summary, facts: string[], skills: string[], languages: string[], certifications: string[], academics?: { institution?, program?, board?, cgpa?, percentage?, subjects?: string[] } }',
+        fallback,
+      );
+    } catch (error) {
+      if (error instanceof GeminiApiError) {
+        return { error: error.message, code: error.code };
+      }
+      throw error;
+    }
+
+    const documentType = [
+      'transcript',
+      'cv',
+      'language_test',
+      'certificate',
+      'award',
+      'recommendation',
+      'other',
+    ].includes(parsed.documentType)
+      ? parsed.documentType
+      : 'other';
+    const summary = String(parsed.summary || fallback.summary).trim();
+    const memory: StudentMemoryDocument = {
+      id: randomUUID(),
+      name: file.originalname,
+      mimeType: mime,
+      documentType,
+      summary,
+      facts: this.cleanStringArray(parsed.facts),
+      skills: this.cleanStringArray(parsed.skills),
+      languages: this.cleanStringArray(parsed.languages),
+      certifications: this.cleanStringArray(parsed.certifications),
+      embedding: await this.geminiService.generateEmbedding(
+        [summary, ...this.cleanStringArray(parsed.facts)]
+          .join('\n')
+          .slice(0, 12000),
+      ),
+      createdAt: new Date().toISOString(),
+    };
+
+    const profile = await this.profilesRepository.findByUserId(userId);
+    const resumeData =
+      profile?.resumeData && typeof profile.resumeData === 'object'
+        ? (profile.resumeData as Record<string, unknown>)
+        : {};
+    const existing = Array.isArray(resumeData.memoryDocuments)
+      ? (resumeData.memoryDocuments as unknown[])
+      : [];
+    const memoryDocuments = [...existing, memory].slice(-30);
+    const academics = parsed.academics;
+
+    await this.profilesRepository.update(userId, {
+      resumeData: { ...resumeData, memoryDocuments } as object,
+      resumeSummary: memoryDocuments
+        .map((item) => (item as StudentMemoryDocument).summary)
+        .filter(Boolean)
+        .slice(-12)
+        .join('\n'),
+      ...(academics?.institution ? { school: academics.institution } : {}),
+      ...(academics?.program ? { stream: academics.program } : {}),
+      ...(academics?.board ? { board: academics.board } : {}),
+      ...(typeof academics?.percentage === 'number'
+        ? { percentage: academics.percentage }
+        : {}),
+      ...(academics?.subjects?.length
+        ? { subjects: this.cleanStringArray(academics.subjects) }
+        : {}),
+    });
+
+    return {
+      ...memory,
+      embedding: undefined,
+      semanticReady: memory.embedding.length > 0,
+    };
+  }
+
+  async getContextDocuments(userId: string) {
+    const profile = await this.profilesRepository.findByUserId(userId);
+    const resumeData =
+      profile?.resumeData && typeof profile.resumeData === 'object'
+        ? (profile.resumeData as Record<string, unknown>)
+        : {};
+    const documents = Array.isArray(resumeData.memoryDocuments)
+      ? (resumeData.memoryDocuments as StudentMemoryDocument[])
+      : [];
+    return documents.map(({ embedding, ...document }) => ({
+      ...document,
+      semanticReady: embedding.length > 0,
+    }));
+  }
+
+  async removeContextDocument(userId: string, documentId: string) {
+    const profile = await this.profilesRepository.findByUserId(userId);
+    const resumeData =
+      profile?.resumeData && typeof profile.resumeData === 'object'
+        ? (profile.resumeData as Record<string, unknown>)
+        : {};
+    const documents = Array.isArray(resumeData.memoryDocuments)
+      ? (resumeData.memoryDocuments as StudentMemoryDocument[])
+      : [];
+    const memoryDocuments = documents.filter(
+      (document) => document.id !== documentId,
+    );
+    await this.profilesRepository.update(userId, {
+      resumeData: { ...resumeData, memoryDocuments } as object,
+      resumeSummary: memoryDocuments
+        .map((document) => document.summary)
+        .join('\n'),
+    });
+    return { removed: documents.length !== memoryDocuments.length };
+  }
+
+  private resolveDocumentMime(file: UploadedAcademicFile) {
+    if (file.mimetype && file.mimetype !== 'application/octet-stream') {
+      return file.mimetype;
+    }
+    const name = file.originalname?.toLowerCase() ?? '';
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    return file.mimetype || 'application/octet-stream';
+  }
+
+  private cleanStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return [
+      ...new Set(
+        value
+          .map(String)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ].slice(0, 50);
   }
 
   private normalizeGeminiAcademicParse(

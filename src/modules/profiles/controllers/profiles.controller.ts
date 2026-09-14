@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Put,
   UploadedFile,
@@ -116,5 +118,37 @@ export class ProfilesController {
   })
   buildAcademicProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.profilesService.buildAcademicProfile(user.id);
+  }
+
+  @Get('me/context-documents')
+  @ApiOperation({ summary: 'List parsed documents available to admissions AI' })
+  getContextDocuments(@CurrentUser() user: AuthenticatedUser) {
+    return this.profilesService.getContextDocuments(user.id);
+  }
+
+  @Post('me/context-documents')
+  @ApiOperation({
+    summary:
+      'Parse transcript, CV, language score, certificate, or other document',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  parseContextDocument(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile()
+    file?: { buffer: Buffer; mimetype: string; originalname: string },
+  ) {
+    if (!file) return { error: 'No file received.' };
+    return this.profilesService.parseContextDocument(user.id, file);
+  }
+
+  @Delete('me/context-documents/:id')
+  @ApiOperation({ summary: 'Remove a document from admissions AI context' })
+  removeContextDocument(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.profilesService.removeContextDocument(user.id, id);
   }
 }

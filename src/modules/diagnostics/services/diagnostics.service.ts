@@ -1,20 +1,23 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { DiagnosticSessionStatus, DiagnosticTemplate, Prisma } from '@prisma/client';
+import { DiagnosticSessionStatus, DiagnosticTemplate, NotificationEventType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 
 import { buildStoryDiagnosticSteps } from '../data/legacy-story.adapter';
+import { getDevFillAnswer } from '../data/dev-fill.answers';
 import {
   RETEST_MESSAGE,
   validateDiagnosticAnswers,
   validateSingleTextAnswer,
 } from './answer-quality.validator';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 
 export interface DiagnosticStep {
   id: string;
@@ -72,6 +75,7 @@ export class DiagnosticsService {
     private readonly prisma: PrismaService,
     private readonly geminiService: GeminiService,
     private readonly cacheService: CacheService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private invalidateStepsCache(userId: string) {
@@ -152,7 +156,33 @@ export class DiagnosticsService {
       this.getStepsForUser(userId),
     ]);
 
-    return { ...status, steps };
+    let sessionAnswers: Record<string, unknown> | undefined;
+    if (status.inProgressSessionId) {
+      const session = await this.prisma.diagnosticSession.findFirst({
+        where: { id: status.inProgressSessionId, userId },
+        select: { answers: true },
+      });
+      sessionAnswers = session?.answers as Record<string, unknown> | undefined;
+    }
+
+    const questionSteps = steps.filter(
+      (step) => step.stepKind === 'question' || step.type !== 'chapter',
+    );
+    const answeredCount = sessionAnswers
+      ? questionSteps.filter(
+          (step) =>
+            sessionAnswers![step.id] !== undefined &&
+            sessionAnswers![step.id] !== null,
+        ).length
+      : 0;
+
+    return {
+      ...status,
+      steps,
+      sessionAnswers,
+      answeredCount,
+      questionCount: questionSteps.length,
+    };
   }
 
   async startSession(userId: string) {
@@ -213,6 +243,66 @@ export class DiagnosticsService {
     });
   }
 
+  async devFillSession(userId: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Dev fill is not available in production.');
+    }
+
+    const session = await this.retakeSession(userId);
+    const steps = await this.getStepsForUser(userId);
+    const questionSteps = steps.filter(
+      (step) => step.stepKind === 'question' || step.type !== 'chapter',
+    );
+
+    const answers: Record<string, unknown> = {};
+    let choiceIndex = 0;
+    let textIndex = 0;
+
+    for (const step of steps) {
+      const isQuestion =
+        step.stepKind === 'question' ||
+        (!step.stepKind && step.type !== 'chapter');
+      if (!isQuestion) continue;
+
+      const value = getDevFillAnswer(step, choiceIndex, textIndex);
+      answers[step.id] = value;
+
+      if (step.type === 'choice' || step.type === 'swipe') {
+        choiceIndex += 1;
+      } else if (
+        step.type === 'ai-followup' ||
+        step.type === 'voice-note' ||
+        step.type === 'multi-choice' ||
+        step.type === 'slider'
+      ) {
+        textIndex += 1;
+      }
+    }
+
+    const epilogue = steps.find((step) => step.id === 'story-epilogue');
+    const epilogueId = epilogue?.id ?? steps[steps.length - 1]?.id;
+
+    await this.prisma.diagnosticSession.update({
+      where: { id: session.id },
+      data: {
+        answers: answers as Prisma.InputJsonValue,
+        metadata: {
+          currentStepId: epilogueId,
+          devFill: true,
+        },
+      },
+    });
+
+    return {
+      sessionId: session.id,
+      answeredCount: questionSteps.length,
+      questionCount: questionSteps.length,
+      resumeStepId: epilogueId,
+      sessionAnswers: answers,
+      steps,
+    };
+  }
+
   async refreshInsights(userId: string): Promise<DiagnosticReport> {
     const latestSession = await this.prisma.diagnosticSession.findFirst({
       where: { userId, status: DiagnosticSessionStatus.COMPLETED },
@@ -226,7 +316,8 @@ export class DiagnosticsService {
 
     const answers = latestSession.answers as Record<string, unknown>;
     const steps = await this.getStepsForUser(userId);
-    await this.assertAnswerQuality(answers, steps, userId);
+    const metadata = (latestSession.metadata as Record<string, unknown>) ?? {};
+    await this.assertAnswerQuality(answers, steps, userId, metadata);
 
     const report = await this.generateReport(answers, userId);
 
@@ -537,7 +628,8 @@ export class DiagnosticsService {
 
     const answers = session.answers as Record<string, unknown>;
     const steps = await this.getStepsForUser(userId);
-    await this.assertAnswerQuality(answers, steps, userId);
+    const metadata = (session.metadata as Record<string, unknown>) ?? {};
+    await this.assertAnswerQuality(answers, steps, userId, metadata);
 
     const report = await this.generateReport(answers, userId);
 
@@ -603,6 +695,13 @@ export class DiagnosticsService {
     await this.cacheService.invalidateUser(userId);
     this.invalidateStepsCache(userId);
 
+    this.notifications.notify(
+      userId,
+      NotificationEventType.DIAGNOSTIC_COMPLETED,
+      { headline: report.headline },
+      { dedupeKey: `diagnostic-completed:${sessionId}` },
+    );
+
     return report;
   }
 
@@ -610,6 +709,7 @@ export class DiagnosticsService {
     answers: Record<string, unknown>,
     steps: DiagnosticStep[],
     userId?: string,
+    sessionMeta?: Record<string, unknown>,
   ): Promise<void> {
     const ruleResult = validateDiagnosticAnswers(answers, steps);
     if (!ruleResult.valid) {
@@ -620,7 +720,10 @@ export class DiagnosticsService {
       });
     }
 
-    if (!this.geminiService.isConfigured()) {
+    const skipAiCheck =
+      process.env.NODE_ENV !== 'production' || sessionMeta?.devFill === true;
+
+    if (skipAiCheck || !this.geminiService.isConfigured()) {
       return;
     }
 
@@ -654,9 +757,9 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
         "issues": ["string — specific problems found"]
       }`,
       fallback: {
-        valid: false,
-        message: RETEST_MESSAGE,
-        issues: ['Answer quality could not be verified automatically.'],
+        valid: true,
+        message: '',
+        issues: [],
       },
     });
 

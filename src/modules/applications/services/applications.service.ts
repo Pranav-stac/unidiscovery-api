@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service';
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { ProfileContextService } from '../../../common/services/profile-context.service';
+import { CacheService } from '../../../infrastructure/cache/cache.service';
 
 export interface GenerateDocumentOptions {
   prompt?: string;
@@ -38,6 +39,7 @@ export class ApplicationsService {
     private readonly prisma: PrismaService,
     private readonly geminiService: GeminiService,
     private readonly profileContext: ProfileContextService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async list(userId: string) {
@@ -61,7 +63,7 @@ export class ApplicationsService {
     data: { title?: string; content?: string },
   ) {
     await this.getById(userId, id);
-    return this.prisma.applicationDocument.update({
+    const doc = await this.prisma.applicationDocument.update({
       where: { id },
       data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
@@ -69,6 +71,8 @@ export class ApplicationsService {
         version: { increment: 1 },
       },
     });
+    void this.cacheService.invalidateStudentCaches(userId);
+    return doc;
   }
 
   async refine(userId: string, id: string, instruction: string) {
@@ -345,7 +349,7 @@ Return ONLY the final document markdown in the canvas. No tool JSON, no preamble
       targetCollege,
       targetCountry,
       tone = 'authentic, first-person, specific',
-      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : 300,
+      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       message,
       attachmentNames,
       excludedContextIds,
@@ -496,7 +500,7 @@ Apply the request using edit/search-replace logic on the draft. Return ONLY the 
       targetCollege,
       targetCountry,
       tone = 'authentic, first-person, specific',
-      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : 300,
+      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       additionalInstructions,
     } = options;
 
@@ -524,6 +528,9 @@ Sections: Introduction, Achievements, Financial context, Impact statement.`,
 Include letter header (Date, To Whom It May Concern), body paragraphs, and closing signature block.`,
       ESSAY: `Write a college essay (~${wordLimit} words) on: "${prompt ?? 'a challenge that shaped my growth'}". Tone: ${tone}. Use vivid, specific details from the student profile. ${targetLine}
 Sections: Hook, Story/conflict, Reflection, Connection to goals.`,
+      CV: `Write a professional CV / résumé for college applications and internships (~${wordLimit} words). Tone: ${tone}. ${targetLine}
+Sections: Header (name, contact), Education, Academic projects, Skills, Activities & leadership, Awards (only if supported by context).
+Use concise bullet points. No photo. Match facts to the student profile and resume data only.`,
     };
 
     const userIntent = additionalInstructions
@@ -584,6 +591,7 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
       SCHOLARSHIP: 'Scholarship Application',
       LETTER_OF_RECOMMENDATION: 'Letter of Recommendation Draft',
       ESSAY: prompt ? `Essay: ${prompt.slice(0, 50)}` : 'College Essay',
+      CV: targetCollege ? `CV — ${targetCollege}` : 'CV / Résumé',
     };
 
     return titles[type];
@@ -600,11 +608,11 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
       targetCollege,
       targetCountry,
       tone = 'authentic, first-person, specific',
-      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : 300,
+      wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       additionalInstructions,
     } = options;
 
-    return this.prisma.applicationDocument.create({
+    const doc = await this.prisma.applicationDocument.create({
       data: {
         userId,
         type,
@@ -622,6 +630,8 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
         },
       },
     });
+    void this.cacheService.invalidateStudentCaches(userId);
+    return doc;
   }
 
   private async persistRefinedDocument(
@@ -632,7 +642,7 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
   ) {
     const doc = await this.getById(userId, id);
 
-    return this.prisma.applicationDocument.update({
+    const updated = await this.prisma.applicationDocument.update({
       where: { id },
       data: {
         content,
@@ -645,5 +655,7 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
         },
       },
     });
+    void this.cacheService.invalidateStudentCaches(userId);
+    return updated;
   }
 }

@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { StudentProfile } from '@prisma/client';
 import { CollegeMetadata } from '../types/college-metadata.interface';
 
@@ -22,17 +23,13 @@ export interface CollegeMatchResult {
   concerns: string[];
 }
 
+@Injectable()
 export class CollegeMatchingService {
   scoreCollege(
     profile: StudentProfile,
     college: CollegeMatchInput,
   ): CollegeMatchResult {
-    const meta = college.metadata ?? {
-      fields: [],
-      programs: [],
-      streams: [],
-      tags: [],
-    };
+    const meta = this.normalizeMetadata(college.metadata);
     const transcript = (profile.transcriptData ?? {}) as { cgpa?: number };
     const goals = (profile.goals ?? {}) as Record<string, unknown>;
     const studentCgpa =
@@ -106,7 +103,9 @@ export class CollegeMatchingService {
       ...meta.streams,
       field,
       ...meta.tags,
-    ].map((t) => t.toLowerCase());
+    ]
+      .filter((token): token is string => typeof token === 'string')
+      .map((token) => token.toLowerCase());
 
     const studentTokens = [
       stream,
@@ -219,5 +218,30 @@ export class CollegeMatchingService {
     if (meta.scholarshipsAvailable && budget === 'need_scholarship') return 75;
     if (tuition > range[1]) return 40;
     return 65;
+  }
+
+  private normalizeMetadata(metadata: CollegeMetadata | null): CollegeMetadata {
+    const value = (metadata ?? {}) as Partial<CollegeMetadata> &
+      Record<string, unknown>;
+    return {
+      ...value,
+      fields: this.asStringList(value.fields),
+      programs: this.asStringList(value.programs),
+      streams: this.asStringList(value.streams),
+      tags: this.asStringList(value.tags),
+    };
+  }
+
+  private asStringList(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string');
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value
+        .split(/[,|/]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    return [];
   }
 }

@@ -28,6 +28,8 @@ import { ComplianceModule } from './modules/compliance/compliance.module';
 import { CounselorModule } from './modules/counselor/counselor.module';
 import { ParentModule } from './modules/parent/parent.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
+import { HomeschoolingModule } from './modules/homeschooling/homeschooling.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -92,6 +94,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     CounselorModule,
     ParentModule,
     AssistantModule,
+    HomeschoolingModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

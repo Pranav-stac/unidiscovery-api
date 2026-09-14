@@ -110,10 +110,21 @@ export class CacheService {
     }
   }
 
+  async invalidateStudentCaches(userId: string): Promise<void> {
+    await Promise.all([
+      this.del(`dashboard:${userId}`),
+      this.del(`college-suite:${userId}`),
+      this.del(`homeschool-journey:${userId}`),
+      this.del(`notifications:unread:${userId}`),
+      this.invalidateByPattern(`tutoring-overview:${userId}:*`),
+    ]);
+  }
+
   async invalidateUser(userId: string): Promise<void> {
     await Promise.all([
       this.del(`user:${userId}`),
       this.invalidateByPattern(`profile:${userId}*`),
+      this.invalidateStudentCaches(userId),
     ]);
   }
 

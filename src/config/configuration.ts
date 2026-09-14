@@ -34,6 +34,17 @@ export const envValidationSchema = Joi.object({
   FIREBASE_SERVICE_ACCOUNT_PATH: Joi.string().allow('').default(''),
   FIREBASE_SERVICE_ACCOUNT_JSON: Joi.string().allow('').default(''),
   KEEP_ALIVE_URL: Joi.string().allow('').default(''),
+  NCERT_MCP_URL: Joi.string().allow('').default(''),
+  OPPORTUNITY_SYNC_ENABLED: Joi.boolean().truthy('true', '1').falsy('false', '0', '').default(true),
+  OPPORTUNITY_SCRAPE_ENABLED: Joi.boolean().truthy('true', '1').falsy('false', '0', '').default(false),
+  NOTIFICATIONS_ENABLED: Joi.boolean().truthy('true', '1').falsy('false', '0', '').default(true),
+  SMTP_HOST: Joi.string().allow('').default(''),
+  SMTP_PORT: Joi.number().default(587),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASS: Joi.string().allow('').default(''),
+  SMTP_SECURE: Joi.boolean().truthy('true', '1').falsy('false', '0', '').default(false),
+  NOTIFICATIONS_EMAIL_FROM: Joi.string().allow('').default(''),
+  APP_WEB_URL: Joi.string().allow('').default('http://localhost:3200'),
 });
 
 export default () => ({
@@ -93,5 +104,20 @@ export default () => ({
   },
   keepAlive: {
     url: trimEnv(process.env.KEEP_ALIVE_URL),
+  },
+  ncertMcpUrl: trimEnv(process.env.NCERT_MCP_URL) ?? '',
+  opportunities: {
+    syncEnabled: ['1', 'true', 'yes'].includes((process.env.OPPORTUNITY_SYNC_ENABLED ?? 'true').toLowerCase()),
+    scrapeEnabled: ['1', 'true', 'yes'].includes((process.env.OPPORTUNITY_SCRAPE_ENABLED ?? '').toLowerCase()),
+  },
+  notifications: {
+    enabled: ['1', 'true', 'yes'].includes((process.env.NOTIFICATIONS_ENABLED ?? 'true').toLowerCase()),
+    smtpHost: trimEnv(process.env.SMTP_HOST) ?? '',
+    smtpPort: Number(trimEnv(process.env.SMTP_PORT) ?? 587),
+    smtpUser: trimEnv(process.env.SMTP_USER) ?? '',
+    smtpPass: trimEnv(process.env.SMTP_PASS) ?? '',
+    smtpSecure: ['1', 'true', 'yes'].includes((process.env.SMTP_SECURE ?? '').toLowerCase()),
+    emailFrom: trimEnv(process.env.NOTIFICATIONS_EMAIL_FROM) ?? 'UniDiscover <noreply@unidiscovery.app>',
+    appWebUrl: trimEnv(process.env.APP_WEB_URL) ?? 'http://localhost:3200',
   },
 });

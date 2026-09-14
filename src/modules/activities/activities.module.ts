@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ActivitiesController } from './controllers/activities.controller';
 import { ActivitiesService } from './services/activities.service';
+import { OpportunitySyncService } from './services/opportunity-sync.service';
 import { ProfilesRepository } from '../../infrastructure/database/repositories/profiles.repository';
 import { ProfileContextService } from '../../common/services/profile-context.service';
 import { GeminiModule } from '../../infrastructure/ai/gemini/gemini.module';
@@ -8,6 +9,7 @@ import { GeminiModule } from '../../infrastructure/ai/gemini/gemini.module';
 @Module({
   imports: [GeminiModule],
   controllers: [ActivitiesController],
-  providers: [ActivitiesService, ProfilesRepository, ProfileContextService],
+  providers: [ActivitiesService, OpportunitySyncService, ProfilesRepository, ProfileContextService],
+  exports: [ActivitiesService, OpportunitySyncService],
 })
 export class ActivitiesModule {}

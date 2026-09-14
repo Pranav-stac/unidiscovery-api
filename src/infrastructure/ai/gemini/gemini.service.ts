@@ -23,11 +23,11 @@ export class GeminiApiError extends Error {
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly model: GenerativeModel | null;
-  private readonly embeddingModel: string;
+  private readonly embeddingModel: GenerativeModel | null;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('gemini.apiKey', '');
-    this.embeddingModel = this.configService.get<string>(
+    const embeddingModelName = this.configService.get<string>(
       'gemini.embeddingModel',
       'text-embedding-004',
     );
@@ -40,8 +40,12 @@ export class GeminiService {
           'gemini-2.5-flash',
         ),
       });
+      this.embeddingModel = client.getGenerativeModel({
+        model: embeddingModelName,
+      });
     } else {
       this.model = null;
+      this.embeddingModel = null;
       this.logger.warn(
         'GEMINI_API_KEY not configured - AI features will use fallbacks',
       );
@@ -105,35 +109,43 @@ export class GeminiService {
 
     const prompt = `${request.systemPrompt}
 
-Return ONLY valid JSON matching this schema:
+Return JSON matching this schema:
 ${request.schemaDescription}
 
 User input:
 ${request.userPrompt}`;
 
     try {
-      const text = await this.generateText(prompt);
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const result = await this.model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      });
+      const text = result.response.text();
+      if (!text.trim()) {
         return request.fallback;
       }
-      return JSON.parse(jsonMatch[0]) as T;
+      return JSON.parse(text) as T;
     } catch (error) {
       this.logger.error('Gemini structured generation failed', error);
       return request.fallback;
     }
   }
 
-  async generateEmbedding(text: string): Promise<number[]> {
-    if (!this.model) {
+  async generateEmbedding(
+    text: string,
+    taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' = 'RETRIEVAL_DOCUMENT',
+  ): Promise<number[]> {
+    if (!this.embeddingModel) {
       return [];
     }
 
     try {
-      const result = await this.model.embedContent({
+      const result = await this.embeddingModel.embedContent({
         content: { role: 'user', parts: [{ text }] },
-        taskType: 'RETRIEVAL_DOCUMENT',
-        model: this.embeddingModel,
+        taskType,
       } as never);
 
       const values = (result as { embedding?: { values?: number[] } }).embedding

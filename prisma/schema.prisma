@@ -30,6 +30,7 @@ enum ApplicationDocumentType {
   SCHOLARSHIP
   LETTER_OF_RECOMMENDATION
   ESSAY
+  CV
 }
 
 enum JobAssetType {
@@ -71,6 +72,47 @@ enum ActivityType {
   OTHER
 }
 
+enum NotificationEventType {
+  DIAGNOSTIC_COMPLETED
+  DIAGNOSTIC_REMINDER
+  COLLEGE_SAVED
+  ACTIVITY_SAVED
+  TUTORING_MILESTONE
+  HOMESCHOOL_UNIT_MASTERED
+  PLAN_ITEM_DUE
+  WEEKLY_DIGEST
+  APPLICATION_UPDATED
+  SYSTEM
+}
+
+enum NotificationCategory {
+  DIAGNOSTIC
+  COLLEGE_SUITE
+  OPPORTUNITIES
+  HOMESCHOOLING
+  APPLICATIONS
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum DevicePlatform {
+  WEB
+  ANDROID
+  IOS
+}
+
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
@@ -107,6 +149,10 @@ model User {
   ucasApplications        UCASApplication[]
   counselorMessages       CounselorMessage[]    @relation("CounselorMessages")
   studentMessages         CounselorMessage[]    @relation("StudentMessages")
+  homeschoolProgress      HomeschoolProgress[]
+  notificationPreference  NotificationPreference?
+  deviceTokens            DeviceToken[]
+  notifications           Notification[]
 
   @@index([role])
   @@index([deletedAt])
@@ -291,6 +337,7 @@ model CollegeRecommendation {
 
   @@unique([userId, collegeId])
   @@index([userId, isSaved])
+  @@index([userId, score(sort: Desc)])
   @@map("college_recommendations")
 }
 
@@ -314,6 +361,7 @@ model Activity {
   embedding   ActivityEmbedding?
 
   @@index([type, isActive])
+  @@index([isActive, deletedAt, updatedAt(sort: Desc)])
   @@map("activities")
 }
 
@@ -341,6 +389,7 @@ model SavedActivity {
   activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
   @@unique([userId, activityId])
+  @@index([userId])
   @@map("saved_activities")
 }
 
@@ -359,6 +408,7 @@ model ApplicationDocument {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
+  @@index([userId, deletedAt, updatedAt(sort: Desc)])
   @@map("application_documents")
 }
 
@@ -426,6 +476,7 @@ model TutoringAttempt {
   question TutoringQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([userId, testType])
+  @@index([userId, isCorrect])
   @@map("tutoring_attempts")
 }
 
@@ -692,4 +743,121 @@ model UCASApplication {
 
   @@index([userId])
   @@map("ucas_applications")
+}
+
+model HomeschoolProgress {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  unitId        String   @map("unit_id")
+  learnDone     Boolean  @default(false) @map("learn_done")
+  practiceScore Int?     @map("practice_score")
+  testScore     Int?     @map("test_score")
+  mastered      Boolean  @default(false)
+  lessonCache   Json?    @map("lesson_cache")
+  practiceCache Json?    @map("practice_cache")
+  testCache     Json?    @map("test_cache")
+  chatHistory   Json     @default("[]") @map("chat_history")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, unitId])
+  @@index([userId])
+  @@map("homeschool_progress")
+}
+
+model HomeschoolSyllabus {
+  id        String   @id @default(uuid()) @db.Uuid
+  cacheKey  String   @unique @map("cache_key")
+  board     String
+  grade     Int
+  subject   String
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([board, grade])
+  @@map("homeschool_syllabi")
+}
+
+model NotificationPreference {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  emailEnabled      Boolean  @default(true) @map("email_enabled")
+  pushEnabled       Boolean  @default(true) @map("push_enabled")
+  inAppEnabled      Boolean  @default(true) @map("in_app_enabled")
+  diagnostic        Boolean  @default(true)
+  collegeSuite      Boolean  @default(true) @map("college_suite")
+  opportunities     Boolean  @default(true)
+  homeschooling     Boolean  @default(true)
+  applications      Boolean  @default(true)
+  weeklyDigest      Boolean  @default(true) @map("weekly_digest")
+  quietHoursStart   Int?     @map("quiet_hours_start")
+  quietHoursEnd     Int?     @map("quiet_hours_end")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model DeviceToken {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  token      String
+  platform   DevicePlatform @default(WEB)
+  userAgent  String?        @map("user_agent")
+  lastSeenAt DateTime       @default(now()) @map("last_seen_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+model Notification {
+  id         String                 @id @default(uuid()) @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  eventType  NotificationEventType  @map("event_type")
+  category   NotificationCategory
+  title      String
+  body       String                 @db.Text
+  actionUrl  String?                @map("action_url")
+  imageUrl   String?                @map("image_url")
+  metadata   Json?
+  dedupeKey  String?                @map("dedupe_key")
+  readAt     DateTime?              @map("read_at")
+  createdAt  DateTime               @default(now()) @map("created_at")
+
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries  NotificationDelivery[]
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([eventType])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String                     @id @default(uuid()) @db.Uuid
+  notificationId String                     @map("notification_id") @db.Uuid
+  channel        NotificationChannel
+  status         NotificationDeliveryStatus @default(PENDING)
+  recipient      String?
+  providerId     String?                    @map("provider_id")
+  error          String?                    @db.Text
+  sentAt         DateTime?                  @map("sent_at")
+  createdAt      DateTime                   @default(now()) @map("created_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([channel, status])
+  @@index([createdAt])
+  @@map("notification_deliveries")
 }
