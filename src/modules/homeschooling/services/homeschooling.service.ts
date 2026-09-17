@@ -70,9 +70,37 @@ type QuizQuestion = {
   answerIndex: number;
   hint: string;
   explanation: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  focusArea?: string;
+  conceptTag?: string;
 };
 
 type QuizSet = { questions: QuizQuestion[] };
+
+type DiagnosticReportShape = {
+  strengths?: string[];
+  interests?: string[];
+  learningStyle?: string;
+  skillGaps?: string[];
+  actionPlan?: string[];
+  summary?: string;
+};
+
+type PersonalizationContext = {
+  diagnosticCompleted: boolean;
+  strengths: string[];
+  interests: string[];
+  skillGaps: string[];
+  learningStyle: string;
+  aiSummary: string;
+  actionPlan: string[];
+  priorPracticeScore: number | null;
+  priorTestScore: number | null;
+  lessonSummary: string;
+  lessonRecap: string[];
+  chapterSourceText: string;
+  focusNote: string;
+};
 
 type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
@@ -277,10 +305,12 @@ export class HomeschoolingService {
     if (!refresh && existing.lessonCache) {
       return { lesson: existing.lessonCache as LessonContent, cached: true };
     }
+    const personalization = await this.buildPersonalizationContext(userId, context, existing);
     const lesson = await this.geminiService.generateStructured<LessonContent>({
-      systemPrompt: `You are a ${context.boardLabel} Class ${context.grade} teacher.
-Write a short lesson for this official chapter only. 4 sections max. Simple language.
-sections: [{ heading, body, keyPoints }]. workedExample: { problem, steps, answer }.`,
+      systemPrompt: `You are a ${context.boardLabel} Class ${context.grade} teacher writing a highly personalized lesson.
+Adapt depth and examples to this student's diagnostic profile, learning style, and known gaps.
+Spend extra time on weak areas. Use simpler language for gaps and stretch examples for strengths.
+4 sections max. sections: [{ heading, body, keyPoints }]. workedExample: { problem, steps, answer }.`,
       userPrompt: JSON.stringify({
         board: context.boardLabel,
         grade: context.grade,
@@ -288,6 +318,17 @@ sections: [{ heading, body, keyPoints }]. workedExample: { problem, steps, answe
         chapter: context.unit.chapter,
         title: context.unit.title,
         officialPdf: context.unit.textbookUrl,
+        chapterSource: personalization.chapterSourceText.slice(0, 3000),
+        studentProfile: {
+          diagnosticCompleted: personalization.diagnosticCompleted,
+          strengths: personalization.strengths,
+          interests: personalization.interests,
+          skillGaps: personalization.skillGaps,
+          learningStyle: personalization.learningStyle,
+          aiSummary: personalization.aiSummary,
+          actionPlan: personalization.actionPlan,
+          focusNote: personalization.focusNote,
+        },
       }),
       schemaDescription:
         '{ title, summary, sections: [{ heading, body, keyPoints: string[] }], workedExample: { problem, steps: string[], answer }, recap: string[] }',
@@ -301,11 +342,11 @@ sections: [{ heading, body, keyPoints }]. workedExample: { problem, steps, answe
   }
 
   async getPractice(userId: string, unitId: string, refresh = false) {
-    return this.getQuiz(userId, unitId, 'practice', 5, refresh);
+    return this.getQuiz(userId, unitId, 'practice', 6, refresh);
   }
 
   async getTest(userId: string, unitId: string, refresh = false) {
-    return this.getQuiz(userId, unitId, 'test', 6, refresh);
+    return this.getQuiz(userId, unitId, 'test', 8, refresh);
   }
 
   async saveProgress(
@@ -491,26 +532,70 @@ Student question: ${message}`;
     const context = await this.unitContext(userId, unitId);
     const existing = await this.progress(userId, unitId);
     const cached = kind === 'practice' ? existing.practiceCache : existing.testCache;
+    const personalization = await this.buildPersonalizationContext(userId, context, existing);
     if (!refresh && cached) {
-      return { quiz: this.publicQuiz(cached as QuizSet), cached: true };
+      return {
+        quiz: this.publicQuiz(cached as QuizSet, kind),
+        cached: true,
+        mode: kind,
+        personalization: this.publicPersonalization(personalization),
+      };
     }
+
+    const practicePrompt = `Create exactly ${count} formative PRACTICE MCQs for ${context.boardLabel} Class ${context.grade}.
+These are guided drills — NOT an exam. Rules:
+- Start easy, build confidence, then medium difficulty.
+- 70% of questions must target the student's weak areas / skill gaps listed below.
+- Each question needs a helpful hint that nudges without giving the answer.
+- Include focusArea (the concept being tested) and conceptTag (short label).
+- 4 options each, one correct answerIndex (0-3).
+- Avoid repeating the same question pattern.`;
+
+    const testPrompt = `Create exactly ${count} summative UNIT TEST MCQs for ${context.boardLabel} Class ${context.grade}.
+This is an exam-style check — NOT practice. Rules:
+- Mix medium and hard difficulty. No hints in the student-facing output.
+- Cover the full chapter evenly, including 1-2 questions on weak areas.
+- Use exam wording: application, multi-step reasoning, common traps.
+- Include focusArea and conceptTag for each question.
+- 4 options each, one correct answerIndex (0-3).
+- Questions must be harder and broader than practice drills.`;
+
     const quiz = await this.geminiService.generateStructured<QuizSet>({
-      systemPrompt: `Create exactly ${count} ${kind === 'test' ? 'short unit-test' : 'practice'} MCQs.
-4 options each, one correct answerIndex (0-3). ${context.boardLabel} Class ${context.grade}. Be concise.`,
+      systemPrompt: kind === 'test' ? testPrompt : practicePrompt,
       userPrompt: JSON.stringify({
+        mode: kind,
         subject: context.subject.name,
         chapter: context.unit.title,
-        source: context.unit.textbookUrl,
+        chapterNumber: context.unit.chapter,
+        officialSource: context.unit.textbookUrl,
+        chapterSource: personalization.chapterSourceText.slice(0, 3500),
+        lessonSummary: personalization.lessonSummary,
+        lessonRecap: personalization.lessonRecap,
+        studentProfile: {
+          diagnosticCompleted: personalization.diagnosticCompleted,
+          strengths: personalization.strengths,
+          interests: personalization.interests,
+          skillGaps: personalization.skillGaps,
+          learningStyle: personalization.learningStyle,
+          aiSummary: personalization.aiSummary,
+          actionPlan: personalization.actionPlan,
+          priorPracticeScore: personalization.priorPracticeScore,
+          priorTestScore: personalization.priorTestScore,
+          focusNote: personalization.focusNote,
+        },
       }),
       schemaDescription:
-        '{ questions: [{ id, prompt, options: string[4], answerIndex: number, hint, explanation }] }',
-      fallback: this.fallbackQuiz(context.unit.title, count),
+        '{ questions: [{ id, prompt, options: string[4], answerIndex: number, hint, explanation, difficulty: "easy"|"medium"|"hard", focusArea, conceptTag }] }',
+      fallback: this.fallbackQuiz(context.unit.title, count, kind, personalization),
     });
     quiz.questions = quiz.questions.slice(0, count).map((question, index) => ({
       ...question,
       id: question.id || `${kind}-${index + 1}`,
       options: (question.options ?? []).slice(0, 4),
       answerIndex: Number(question.answerIndex) || 0,
+      difficulty: question.difficulty ?? (kind === 'test' ? 'medium' : 'easy'),
+      focusArea: question.focusArea ?? context.unit.title,
+      conceptTag: question.conceptTag ?? `Concept ${index + 1}`,
     }));
     await this.prisma.homeschoolProgress.update({
       where: { userId_unitId: { userId, unitId } },
@@ -519,12 +604,85 @@ Student question: ${message}`;
           ? { practiceCache: quiz as object }
           : { testCache: quiz as object },
     });
-    return { quiz: this.publicQuiz(quiz), cached: false };
+    return {
+      quiz: this.publicQuiz(quiz, kind),
+      cached: false,
+      mode: kind,
+      personalization: this.publicPersonalization(personalization),
+    };
   }
 
-  private publicQuiz(quiz: QuizSet) {
+  private publicQuiz(quiz: QuizSet, kind: 'practice' | 'test') {
     return {
-      questions: quiz.questions.map(({ answerIndex: _answer, ...question }) => question),
+      questions: quiz.questions.map((question) => {
+        const { answerIndex: _ignored, hint, ...rest } = question;
+        void _ignored;
+        return {
+          ...rest,
+          hint: kind === 'practice' ? hint : '',
+        };
+      }),
+    };
+  }
+
+  private publicPersonalization(personalization: PersonalizationContext) {
+    return {
+      diagnosticCompleted: personalization.diagnosticCompleted,
+      focusNote: personalization.focusNote,
+      skillGaps: personalization.skillGaps,
+      strengths: personalization.strengths.slice(0, 4),
+      learningStyle: personalization.learningStyle,
+    };
+  }
+
+  private async buildPersonalizationContext(
+    userId: string,
+    context: Awaited<ReturnType<HomeschoolingService['unitContext']>>,
+    progress: Awaited<ReturnType<HomeschoolingService['progress']>>,
+  ): Promise<PersonalizationContext> {
+    const diagnostic = await this.prisma.diagnosticResult.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const report = (diagnostic?.report ?? null) as DiagnosticReportShape | null;
+    const profile = context.profile;
+    const subjectNeedle = [
+      context.subject.name,
+      context.subject.id.replace(/-/g, ' '),
+      context.unit.title,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    const allGaps = [...(report?.skillGaps ?? [])];
+    const matchedGaps = allGaps.filter((gap) => {
+      const lower = gap.toLowerCase();
+      return subjectNeedle.split(/\s+/).some((token) => token.length > 3 && lower.includes(token));
+    });
+    const skillGaps = (matchedGaps.length ? matchedGaps : allGaps).slice(0, 5);
+    const lesson = (progress.lessonCache ?? null) as LessonContent | null;
+    const chapterSourceText = await this.optionalMcpChapter(context.parsed, context.unit);
+
+    const focusNote = skillGaps.length
+      ? `Extra focus on your gaps: ${skillGaps.join(', ')}`
+      : profile.diagnosticCompleted
+        ? `Personalized for your ${context.subject.name} pathway`
+        : 'Take the diagnostic to unlock gap-focused practice';
+
+    return {
+      diagnosticCompleted: Boolean(profile.diagnosticCompleted),
+      strengths: [...new Set([...(profile.strengths ?? []), ...(report?.strengths ?? [])])].slice(0, 6),
+      interests: [...new Set([...(profile.interests ?? []), ...(report?.interests ?? [])])].slice(0, 6),
+      skillGaps,
+      learningStyle: report?.learningStyle ?? '',
+      aiSummary: profile.aiSummary ?? report?.summary ?? '',
+      actionPlan: (report?.actionPlan ?? []).slice(0, 5),
+      priorPracticeScore: progress.practiceScore ?? null,
+      priorTestScore: progress.testScore ?? null,
+      lessonSummary: lesson?.summary ?? '',
+      lessonRecap: lesson?.recap ?? [],
+      chapterSourceText,
+      focusNote,
     };
   }
 
@@ -593,14 +751,22 @@ Student question: ${message}`;
     subject: OfficialSubject,
     progressMap: Map<string, { learnDone?: boolean; practiceScore?: number | null; testScore?: number | null; mastered?: boolean }>,
   ) {
-    const units = subject.units.map((unit) => {
+    const units = subject.units.map((unit, index) => {
       const unitId = this.unitId(board, grade, subjectId, unit.chapter);
       const progress = progressMap.get(unitId);
-      const status = progress?.mastered
-        ? 'mastered'
-        : progress?.learnDone || progress?.practiceScore != null
-          ? 'in_progress'
-          : 'available';
+      const unlocked =
+        index === 0 ||
+        subject.units.slice(0, index).every((prior) => {
+          const priorId = this.unitId(board, grade, subjectId, prior.chapter);
+          return Boolean(progressMap.get(priorId)?.mastered);
+        });
+      const status = !unlocked
+        ? 'locked'
+        : progress?.mastered
+          ? 'mastered'
+          : progress?.learnDone || progress?.practiceScore != null
+            ? 'in_progress'
+            : 'available';
       return {
         id: unitId,
         chapter: unit.chapter,
@@ -785,20 +951,39 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     };
   }
 
-  private fallbackQuiz(title: string, count: number): QuizSet {
+  private fallbackQuiz(
+    title: string,
+    count: number,
+    kind: 'practice' | 'test',
+    personalization: PersonalizationContext,
+  ): QuizSet {
+    const gap = personalization.skillGaps[0] ?? title;
     return {
       questions: Array.from({ length: count }, (_, index) => ({
         id: `q${index + 1}`,
-        prompt: `Which statement is true about ${title}?`,
-        options: [
-          `${title} is part of the official syllabus`,
-          `${title} can be skipped`,
-          `${title} is not taught in school`,
-          `${title} has no examples`,
-        ],
+        prompt:
+          kind === 'test'
+            ? `Exam-style: Which best applies ${gap} in the context of ${title}?`
+            : `Practice: What is the key idea in ${title} related to ${gap}?`,
+        options: kind === 'test'
+          ? [
+              `Apply the core rule from ${title} to solve a new scenario`,
+              `Skip definitions and guess from keywords`,
+              `Memorize only one example without understanding`,
+              `Ignore ${gap} because it is optional`,
+            ]
+          : [
+              `Understand the main concept step by step`,
+              `Skip to the next chapter`,
+              `Memorize without practicing`,
+              `Ignore weak areas`,
+            ],
         answerIndex: 0,
-        hint: 'This chapter is on the official list.',
-        explanation: `${title} is an official chapter, so you should learn it.`,
+        hint: kind === 'practice' ? `Think about the main concept in ${title} and your gap: ${gap}.` : '',
+        explanation: `${title} is on your syllabus. ${kind === 'practice' ? 'Practice builds the concept before the test.' : 'The test checks full chapter mastery.'}`,
+        difficulty: kind === 'test' ? (index % 2 ? 'hard' : 'medium') : (index < 2 ? 'easy' : 'medium'),
+        focusArea: gap,
+        conceptTag: `Concept ${index + 1}`,
       })),
     };
   }

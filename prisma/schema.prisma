@@ -51,6 +51,23 @@ enum ActivityPlanStatus {
   SKIPPED
 }
 
+enum PlanCategory {
+  ACADEMICS
+  TEST_PREP
+  PROFILE
+  APPLICATION
+  INTERVIEW
+  ENROLLMENT
+  VISA
+  OTHER
+}
+
+enum PlanResponsibility {
+  STUDENT
+  PARENT
+  COUNSELOR
+}
+
 enum MentorConnectionStatus {
   PENDING
   ACTIVE
@@ -557,24 +574,34 @@ model CareerMap {
 }
 
 model ActivityPlanItem {
-  id           String             @id @default(uuid()) @db.Uuid
-  userId       String             @map("user_id") @db.Uuid
-  activityId   String?            @map("activity_id") @db.Uuid
-  title        String
-  type         ActivityType
-  status       ActivityPlanStatus @default(PLANNED)
-  targetMonth  Int?               @map("target_month")
-  targetYear   Int?               @map("target_year")
-  priority     Int                @default(2)
-  notes        String?            @db.Text
-  linkedCareer String?            @map("linked_career")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
+  id             String               @id @default(uuid()) @db.Uuid
+  userId         String               @map("user_id") @db.Uuid
+  activityId     String?              @map("activity_id") @db.Uuid
+  title          String
+  type           ActivityType
+  category       PlanCategory         @default(OTHER)
+  subcategory    String?
+  status         ActivityPlanStatus   @default(PLANNED)
+  startDate      DateTime?            @map("start_date")
+  dueDate        DateTime?            @map("due_date")
+  targetMonth    Int?                 @map("target_month")
+  targetYear     Int?                 @map("target_year")
+  country        String?
+  priority       Int                  @default(2)
+  notes          String?              @db.Text
+  description    String?              @db.Text
+  whyItMatters   String?              @map("why_it_matters") @db.Text
+  responsibility PlanResponsibility   @default(STUDENT)
+  linkedCareer   String?              @map("linked_career")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   activity Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
+  @@index([userId, category])
+  @@index([userId, dueDate])
   @@map("activity_plan_items")
 }
 

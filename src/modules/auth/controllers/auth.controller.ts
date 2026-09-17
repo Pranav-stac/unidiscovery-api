@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from '../services/auth.service';
-import { LoginDto, RegisterDto, GoogleAuthDto } from '../dto/auth.dto';
+import { LoginDto, RegisterDto, GoogleAuthDto, RefreshTokenDto } from '../dto/auth.dto';
 import { Public } from '../../../common/decorators/auth.decorators';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -32,6 +32,13 @@ export class AuthController {
   })
   loginWithGoogle(@Body() dto: GoogleAuthDto) {
     return this.authService.loginWithGoogle(dto.idToken);
+  }
+
+  @Public()
+  @Post('refresh')
+  @ApiOperation({ summary: 'Exchange refresh token for new access + refresh tokens' })
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refreshToken);
   }
 
   @ApiBearerAuth()

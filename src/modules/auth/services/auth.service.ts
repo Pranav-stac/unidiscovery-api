@@ -189,6 +189,22 @@ export class AuthService implements OnModuleInit {
     };
   }
 
+  async refresh(refreshToken: string): Promise<AuthTokens> {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string; role: UserRole }>(
+        refreshToken,
+        { secret: this.configService.getOrThrow<string>('jwt.secret') },
+      );
+      const user = await this.usersRepository.findById(payload.sub);
+      if (!user) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      return this.generateTokens(user.id, user.role);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+  }
+
   private async hashPassword(password: string): Promise<string> {
     const saltRounds = this.configService.get<number>('bcrypt.saltRounds', 12);
     return bcrypt.hash(password, saltRounds);

@@ -57,6 +57,27 @@ export class ApplicationsService {
     return doc;
   }
 
+  async createBlank(
+    userId: string,
+    type: ApplicationDocumentType,
+    title?: string,
+  ) {
+    const doc = await this.prisma.applicationDocument.create({
+      data: {
+        userId,
+        type,
+        title: title?.trim() || this.documentTitle(type, {}),
+        content: '',
+        metadata: {
+          createdManually: true,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    });
+    void this.cacheService.invalidateStudentCaches(userId);
+    return doc;
+  }
+
   async update(
     userId: string,
     id: string,

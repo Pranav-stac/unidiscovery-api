@@ -34,3 +34,10 @@ export class GoogleAuthDto {
   @MinLength(1)
   idToken!: string;
 }
+
+export class RefreshTokenDto {
+  @ApiProperty({ description: 'JWT refresh token' })
+  @IsString()
+  @MinLength(1)
+  refreshToken!: string;
+}

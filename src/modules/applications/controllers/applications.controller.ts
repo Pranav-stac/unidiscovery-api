@@ -37,6 +37,15 @@ class GenerateDocumentDto {
   additionalInstructions?: string;
 }
 
+class CreateDocumentDto {
+  @IsEnum(ApplicationDocumentType)
+  type!: ApplicationDocumentType;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+}
+
 class UpdateDocumentDto {
   @IsOptional()
   @IsString()
@@ -108,6 +117,14 @@ export class ApplicationsController {
   @Get('documents')
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.applicationsService.list(user.id);
+  }
+
+  @Post('documents')
+  createBlank(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateDocumentDto,
+  ) {
+    return this.applicationsService.createBlank(user.id, dto.type, dto.title);
   }
 
   @Get('documents/:id')
