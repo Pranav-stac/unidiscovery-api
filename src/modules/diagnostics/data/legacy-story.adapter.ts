@@ -3,103 +3,46 @@ import {
   DiagnosticQuestion,
 } from './legacy-questions.config';
 import type { DiagnosticStep } from '../services/diagnostics.service';
-
-import { buildCollegeStorySteps } from './college-story.config';
 import type { StoryProfileContext } from './story-profile.types';
 
 export type { StoryProfileContext } from './story-profile.types';
 
-const SECTION_NARRATIVE: Record<string, (ctx: StoryProfileContext) => string> =
-  {
-    'Academic Profile': (c) =>
-      c.hasTranscript
-        ? `We've pulled your records from ${c.school ?? 'your institution'}${c.cgpa ? ` (CGPA ${c.cgpa})` : ''}. A few quick checks to fill any gaps.`
-        : `Let's capture your academic world${c.school ? ` at ${c.school}` : ''}${c.stream ? ` in ${c.stream}` : ''}.`,
-    'Outside the Classroom': () =>
-      'Now the fun part — what you do when class ends. This reveals more than grades ever could.',
-    'Family & Context': () =>
-      'Every great story has context. These questions help us understand your real-world constraints and support.',
-    'Aptitude & Reasoning': () =>
-      'Quick brain teasers — no studying needed. Just show us how you think.',
-    'Numerical Aptitude': () =>
-      'Numbers tell a story too. A few puzzles to gauge your quantitative comfort.',
-    'Logical Reasoning': () =>
-      'Logic time — trust your instincts, these are not trick questions.',
-    'Verbal Comprehension': () =>
-      "Words matter. Let's see how you read between the lines.",
-    'Work Preference Mapping': () =>
-      'Would you rather…? Classic choices that map your natural work style (RIASEC-inspired).',
-    'Interest Mapping': () =>
-      'Pick what pulls you — each choice reveals a thread of your future career story.',
-    'Motivators & Values': () =>
-      'What truly drives you? There are no right answers — only honest ones.',
-    'Values & Motivators': () =>
-      'What would make you feel successful — not just on paper, but in life?',
-    'Working Style': () =>
-      'How do you learn and grow best? Every path is different.',
-    'Future Aspiration': () =>
-      'Close your eyes. Where do you see yourself? Let us write that chapter.',
-    'Stream & Subject Direction': () =>
-      'Streams shape doors. Let us see which ones you are drawn to.',
-    'Extracurricular & College Direction': () =>
-      'Colleges and careers care about the full you — not just marks. This chapter is about your bigger picture.',
-  };
+/** Fixed grade band for the standard diagnostic (same questions for every student). */
+const STANDARD_CLASS_GROUP = '11-12' as const;
+const STANDARD_GRADE = 12;
 
-function resolveLegacyClassGroup(ctx: StoryProfileContext): ClassGroupType {
-  const g = ctx.classGroup;
-  if (g === '6-8' || g === '9-10' || g === '11-12') return g;
-  return '9-10';
-}
-
-type ClassGroupType = '6-8' | '9-10' | '11-12';
-
-function resolveGrade(
-  ctx: StoryProfileContext,
-  classGroup: ClassGroupType,
-): number {
-  if (ctx.grade) return ctx.grade;
-  if (classGroup === '6-8') return 8;
-  if (classGroup === '9-10') return 10;
-  return 12;
-}
-
-function shouldSkipQuestion(
-  q: DiagnosticQuestion,
-  ctx: StoryProfileContext,
-): boolean {
-  const id = q.questionId;
-
-  if (id.endsWith('_q1_profile')) {
-    if (ctx.onboardingCompleted) return true;
-    const hasGradeContext = !!(ctx.classGroup || ctx.grade);
-    const hasLocation = !!ctx.country;
-    const hasAcademicContext = !!(ctx.board || ctx.school);
-    return hasGradeContext && hasLocation && hasAcademicContext;
-  }
-
-  if (id.endsWith('_q2_subjects')) {
-    if (ctx.onboardingCompleted) return true;
-    return !!(
-      ctx.stream ||
-      ctx.transcriptProgram ||
-      (ctx.subjects?.length ?? 0) > 0
-    );
-  }
-
-  if (id === 'g1112_q3_grades_scores' && (ctx.cgpa || ctx.percentage))
-    return true;
-  if (id === 'g910_q30_favorite_subjects' && (ctx.subjects?.length ?? 0) > 0)
-    return true;
-  if (id === 'g1112_q31_after_grade12' && ctx.targetDegree) return true;
-  if (
-    id === 'g1112_q32_hidden_strengths' &&
-    ctx.hasTranscript &&
-    ctx.transcriptProgram
-  )
-    return false;
-
-  return false;
-}
+const STATIC_SECTION_NARRATIVE: Record<string, string> = {
+  'Academic Profile':
+    'Tell us about your academic background and how you learn best.',
+  'Outside the Classroom':
+    'What you do beyond school often reveals as much as grades.',
+  'Family & Context':
+    'A few questions about your context and support system.',
+  'Aptitude & Reasoning':
+    'Quick brain teasers — no studying needed. Just show us how you think.',
+  'Numerical Aptitude':
+    'A few number puzzles to gauge your quantitative comfort.',
+  'Logical Reasoning':
+    'Logic questions — trust your instincts.',
+  'Verbal Comprehension':
+    "Short passages to see how you read and interpret information.",
+  'Work Preference Mapping':
+    'Classic choices that map your natural work style.',
+  'Interest Mapping':
+    'Pick what pulls you — each choice reveals a thread of your story.',
+  'Motivators & Values':
+    'What truly drives you? There are no right answers — only honest ones.',
+  'Values & Motivators':
+    'What would make you feel successful — not just on paper, but in life?',
+  'Working Style':
+    'How do you learn and grow best?',
+  'Future Aspiration':
+    'Where do you see yourself heading after school?',
+  'Stream & Subject Direction':
+    'Which subjects and streams interest you most?',
+  'Extracurricular & College Direction':
+    'Activities, interests, and the bigger picture beyond marks.',
+};
 
 function mapQuestionType(q: DiagnosticQuestion): DiagnosticStep['type'] {
   switch (q.questionType) {
@@ -141,12 +84,9 @@ function toDiagnosticStep(
   };
 }
 
-function chapterIntro(
-  section: string,
-  ctx: StoryProfileContext,
-): DiagnosticStep {
+function chapterIntro(section: string): DiagnosticStep {
   const narrative =
-    SECTION_NARRATIVE[section]?.(ctx) ?? `Next chapter: ${section}`;
+    STATIC_SECTION_NARRATIVE[section] ?? `Next chapter: ${section}`;
   return {
     id: `chapter:${section}`,
     type: 'chapter',
@@ -158,30 +98,13 @@ function chapterIntro(
   };
 }
 
-export function buildStoryDiagnosticSteps(
-  ctx: StoryProfileContext,
-): DiagnosticStep[] {
-  if (ctx.isCollege) {
-    return buildCollegeStorySteps(ctx);
-  }
-
-  const classGroup = resolveLegacyClassGroup(ctx);
-  const grade = resolveGrade(ctx, classGroup);
-
-  const legacyQuestions = DIAGNOSTIC_QUESTIONS_REGISTRY.filter((q) => {
-    const matchGroup = q.applicableClassGroups.includes(classGroup);
-    const matchGrade = q.applicableGrades.includes(grade);
-    return matchGroup && matchGrade && !shouldSkipQuestion(q, ctx);
-  }).sort((a, b) => a.order - b.order);
-
-  const questions = legacyQuestions;
-
-  const levelLabel =
-    classGroup === '11-12'
-      ? 'Classes 11–12'
-      : classGroup === '9-10'
-        ? 'Classes 9–10'
-        : 'Classes 6–8';
+/** Standard diagnostic — identical steps for every student. */
+export function buildStandardDiagnosticSteps(): DiagnosticStep[] {
+  const questions = DIAGNOSTIC_QUESTIONS_REGISTRY.filter(
+    (q) =>
+      q.applicableClassGroups.includes(STANDARD_CLASS_GROUP) &&
+      q.applicableGrades.includes(STANDARD_GRADE),
+  ).sort((a, b) => a.order - b.order);
 
   const steps: DiagnosticStep[] = [
     {
@@ -189,8 +112,9 @@ export function buildStoryDiagnosticSteps(
       type: 'chapter',
       stepKind: 'chapter',
       chapter: 'Your Story',
-      title: `Hey ${ctx.name}, your discovery story begins`,
-      subtitle: `A personalized ${levelLabel} journey — interactive chapters, not a boring form. We already know parts of your profile; we'll only ask what's missing.`,
+      title: 'Your discovery journey begins',
+      subtitle:
+        'A structured diagnostic covering academics, interests, aptitude, and future direction. Answer honestly — there are no wrong responses.',
       intro: 'Prologue',
     },
   ];
@@ -200,7 +124,7 @@ export function buildStoryDiagnosticSteps(
 
   for (const q of questions) {
     if (q.section !== lastSection) {
-      steps.push(chapterIntro(q.section, ctx));
+      steps.push(chapterIntro(q.section));
       lastSection = q.section;
     }
     steps.push(toDiagnosticStep(q, q.section));
@@ -223,11 +147,18 @@ export function buildStoryDiagnosticSteps(
     chapter: 'Finale',
     title: 'Almost there!',
     subtitle:
-      'AI is ready to weave your answers, profile, and transcript into a personalized insight report.',
+      'We will review your answers and generate an insight report based on what you shared in this diagnostic.',
     intro: 'Finale',
   });
 
   return steps;
+}
+
+/** @deprecated Profile context is ignored — use buildStandardDiagnosticSteps. */
+export function buildStoryDiagnosticSteps(
+  _ctx: StoryProfileContext,
+): DiagnosticStep[] {
+  return buildStandardDiagnosticSteps();
 }
 
 export function countStoryQuestions(steps: DiagnosticStep[]): number {

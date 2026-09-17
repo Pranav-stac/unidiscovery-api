@@ -320,10 +320,11 @@ export function validateDiagnosticAnswers(
 
   if (questionSteps.length === 0) {
     return {
-      valid: true,
-      message: '',
-      issues: [],
-      code: 'ANSWERS_INVALID',
+      valid: false,
+      message:
+        'Diagnostic questions are not available right now. Please refresh the page and retake the diagnostic.',
+      issues: ['No diagnostic questions were loaded for this session.'],
+      code: 'INSUFFICIENT_ANSWERS',
     };
   }
 

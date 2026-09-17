@@ -10,7 +10,7 @@ import { PrismaService } from '../../../infrastructure/database/prisma/prisma.se
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 
-import { buildStoryDiagnosticSteps } from '../data/legacy-story.adapter';
+import { buildStandardDiagnosticSteps } from '../data/legacy-story.adapter';
 import { getDevFillAnswer } from '../data/dev-fill.answers';
 import {
   RETEST_MESSAGE,
@@ -66,10 +66,8 @@ export class DiagnosticsService {
     expires: number;
   } | null = null;
 
-  private stepsCache = new Map<
-    string,
-    { steps: DiagnosticStep[]; expires: number }
-  >();
+  private staticStepsCache: { steps: DiagnosticStep[]; expires: number } | null =
+    null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -78,8 +76,8 @@ export class DiagnosticsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  private invalidateStepsCache(userId: string) {
-    this.stepsCache.delete(userId);
+  private invalidateStepsCache(_userId?: string) {
+    this.staticStepsCache = null;
   }
 
   async getActiveTemplate(): Promise<DiagnosticTemplate | null> {
@@ -234,13 +232,27 @@ export class DiagnosticsService {
 
     this.invalidateStepsCache(userId);
 
-    return this.prisma.diagnosticSession.create({
+    const session = await this.prisma.diagnosticSession.create({
       data: {
         userId,
         templateId: template.id,
         metadata: { currentStep: 0, retake: true },
       },
     });
+
+    const steps = await this.getStepsForUser(userId);
+    const questionSteps = steps.filter(
+      (step) => step.stepKind === 'question' || step.type !== 'chapter',
+    );
+
+    return {
+      id: session.id,
+      steps,
+      questionCount: questionSteps.length,
+      answeredCount: 0,
+      sessionAnswers: {},
+      resumeStepId: steps[0]?.id,
+    };
   }
 
   async devFillSession(userId: string) {
@@ -417,42 +429,20 @@ export class DiagnosticsService {
     };
   }
 
-  async getStepsForUser(userId: string): Promise<DiagnosticStep[]> {
-    const cached = this.stepsCache.get(userId);
-    if (cached && cached.expires > Date.now()) {
-      return cached.steps;
+  async getStepsForUser(_userId: string): Promise<DiagnosticStep[]> {
+    if (
+      this.staticStepsCache &&
+      this.staticStepsCache.expires > Date.now()
+    ) {
+      return this.staticStepsCache.steps;
     }
 
-    const ctx = await this.getProfileContext(userId);
-    if (!ctx) return this.getInitialSteps();
+    const steps = buildStandardDiagnosticSteps();
 
-    const steps = buildStoryDiagnosticSteps({
-      name: ctx.name,
-      isCollege: ctx.isCollege,
-      classGroup: ctx.classGroup,
-      classGroupLabel: ctx.classGroupLabel,
-      stream: ctx.stream,
-      board: ctx.board,
-      school: ctx.school,
-      country: ctx.country,
-      city: ctx.city,
-      grade: ctx.grade,
-      targetDegree: ctx.targetDegree,
-      targetCountries: ctx.targetCountries,
-      subjects: ctx.subjects,
-      cgpa: ctx.cgpa,
-      percentage: ctx.percentage,
-      hasTranscript: ctx.hasTranscript,
-      transcriptProgram: ctx.transcriptProgram,
-      resumeSummary: ctx.resumeSummary,
-      interests: ctx.interests,
-      onboardingCompleted: ctx.onboardingCompleted,
-    });
-
-    this.stepsCache.set(userId, {
+    this.staticStepsCache = {
       steps,
       expires: Date.now() + 5 * 60 * 1000,
-    });
+    };
 
     return steps;
   }
@@ -573,47 +563,21 @@ export class DiagnosticsService {
   }
 
   async getAiFollowUp(
-    answers: Record<string, unknown>,
-    userId?: string,
+    _answers: Record<string, unknown>,
+    _userId?: string,
   ): Promise<DiagnosticStep> {
-    const ctx = userId ? await this.getProfileContext(userId) : null;
-    const profileHint = ctx
-      ? `Student: ${ctx.name}, ${ctx.isCollege ? 'college' : 'school'} student, stream: ${ctx.stream ?? 'undecided'}, goal: ${ctx.targetDegree ?? 'not set'}, countries: ${ctx.targetCountries.join(', ') || 'not set'}`
-      : '';
-
-    const fallback: DiagnosticStep = {
+    return {
       id: 'ai-generated',
       type: 'choice',
-      title: ctx?.isCollege
-        ? 'What would make your next year a success?'
-        : 'What matters most in your ideal college or career?',
-      options: ctx?.isCollege
-        ? [
-            { value: 'internship', label: 'A great internship' },
-            { value: 'skills', label: 'Mastering key skills' },
-            { value: 'network', label: 'Building connections' },
-            { value: 'clarity', label: 'Clear career direction' },
-          ]
-        : [
-            { value: 'impact', label: 'Making an impact' },
-            { value: 'income', label: 'Financial stability' },
-            { value: 'creativity', label: 'Creative freedom' },
-            { value: 'prestige', label: 'Top institutions' },
-          ],
+      title: 'What matters most in your ideal college or career?',
+      subtitle: 'Pick the option that resonates most right now.',
+      options: [
+        { value: 'impact', label: 'Making an impact' },
+        { value: 'income', label: 'Financial stability' },
+        { value: 'creativity', label: 'Creative freedom' },
+        { value: 'prestige', label: 'Top institutions' },
+      ],
     };
-
-    return this.geminiService.generateStructured<DiagnosticStep>({
-      systemPrompt: `You are a warm, professional student career coach for UniDiscover. Generate ONE short follow-up diagnostic question based on prior answers and student context. Reference their goals naturally. Keep it engaging, specific, and minimal. ${profileHint}`,
-      userPrompt: JSON.stringify({ answers, profile: ctx }),
-      schemaDescription: `{
-        "id": "ai-generated",
-        "type": "choice",
-        "title": "string",
-        "subtitle": "string optional",
-        "options": [{"value":"string","label":"string",}]
-      }`,
-      fallback,
-    });
   }
 
   async completeSession(sessionId: string, userId: string) {
@@ -626,8 +590,24 @@ export class DiagnosticsService {
       throw new Error('Session not found');
     }
 
-    const answers = session.answers as Record<string, unknown>;
+    const answers = (session.answers as Record<string, unknown>) ?? {};
     const steps = await this.getStepsForUser(userId);
+    const questionSteps = steps.filter(
+      (step) => step.stepKind === 'question' || step.type !== 'chapter',
+    );
+    const answeredCount = questionSteps.filter(
+      (step) => answers[step.id] !== undefined && answers[step.id] !== null,
+    ).length;
+
+    if (questionSteps.length === 0) {
+      throw new UnprocessableEntityException({
+        message:
+          'Diagnostic questions are not available right now. Please refresh and retake the diagnostic.',
+        code: 'INSUFFICIENT_ANSWERS',
+        issues: ['No diagnostic questions were loaded for this session.'],
+      });
+    }
+
     const metadata = (session.metadata as Record<string, unknown>) ?? {};
     await this.assertAnswerQuality(answers, steps, userId, metadata);
 
@@ -727,7 +707,6 @@ export class DiagnosticsService {
       return;
     }
 
-    const ctx = userId ? await this.getProfileContext(userId) : null;
     const aiCheck = await this.geminiService.generateStructured<{
       valid: boolean;
       message: string;
@@ -747,9 +726,6 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
         questionCount: steps.filter(
           (s) => s.stepKind === 'question' || s.type !== 'chapter',
         ).length,
-        profile: ctx
-          ? { name: ctx.name, classGroup: ctx.classGroup, stream: ctx.stream }
-          : null,
       }),
       schemaDescription: `{
         "valid": "boolean — true only if answers are thoughtful enough",
@@ -789,7 +765,7 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
       strengths: report.strengths?.map((s) => this.sanitizeText(s)),
       interests: report.interests?.map((s) => this.sanitizeText(s)),
       recommendedDirections: report.recommendedDirections?.map((s) => this.sanitizeText(s)),
-      profileInsights: report.profileInsights?.map((s) => this.sanitizeText(s)),
+      profileInsights: undefined,
       careerMatches: report.careerMatches?.map((s) => this.sanitizeText(s)),
       skillGaps: report.skillGaps?.map((s) => this.sanitizeText(s)),
       actionPlan: report.actionPlan?.map((s) => this.sanitizeText(s)),
@@ -798,136 +774,58 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
 
   private async generateReport(
     answers: Record<string, unknown>,
-    userId?: string,
+    _userId?: string,
   ): Promise<DiagnosticReport> {
-    const ctx = userId ? await this.getProfileContext(userId) : null;
-
-    const fallbackInsights: string[] = [];
-    if (ctx?.hasTranscript)
-      fallbackInsights.push(
-        `Academic records on file from ${ctx.transcriptInstitution ?? 'your institution'}`,
-      );
-    if (ctx?.cgpa)
-      fallbackInsights.push(`CGPA ${ctx.cgpa} — solid academic foundation`);
-    if (ctx?.targetDegree)
-      fallbackInsights.push(
-        `Targeting ${ctx.targetDegree}${ctx.targetCountries.length ? ` in ${ctx.targetCountries.join(', ')}` : ''}`,
-      );
-    if (ctx?.transcriptSubjects.length)
-      fallbackInsights.push(
-        `Strong subject exposure: ${ctx.transcriptSubjects.slice(0, 4).join(', ')}`,
-      );
-
     const fallback: DiagnosticReport = {
-      headline: ctx?.targetDegree
-        ? `Your path toward ${ctx.targetDegree}`
-        : 'Your unique path is taking shape',
-      summary: ctx?.isCollege
-        ? `As a ${ctx.stream ?? 'college'} student${ctx.cgpa ? ` with CGPA ${ctx.cgpa}` : ''}, your profile shows strong potential. Your discovery answers reinforce a thoughtful, goal-oriented approach.`
-        : 'Based on your responses and profile, you show a blend of curiosity, creativity, and purpose-driven thinking.',
-      strengths: ctx?.strengths?.length
-        ? ctx.strengths.slice(0, 4)
-        : ['Curiosity', 'Adaptability'],
-      interests: ctx?.interests?.length
-        ? ctx.interests.slice(0, 4)
-        : ['Technology', 'Problem solving'],
+      headline: 'Your discovery results',
+      summary:
+        'Based on your diagnostic answers, you show a blend of curiosity, purpose, and thoughtful reflection.',
+      strengths: ['Curiosity', 'Adaptability', 'Problem solving'],
+      interests: ['Technology', 'Learning', 'Growth'],
       learningStyle: 'Hands-on explorer',
-      recommendedDirections: ctx?.isCollege
-        ? ['Industry internships', 'Skill specialization', 'Graduate pathways']
-        : ['STEM exploration', 'Design & innovation'],
-      nextBestAction: ctx?.isCollege
-        ? 'View your personalized career map and explore internship opportunities'
-        : 'Explore college matches tailored to your profile',
-      profileInsights: fallbackInsights.length
-        ? fallbackInsights
-        : ['Complete your profile and upload transcripts for deeper insights'],
-      careerMatches: ctx?.isCollege
-        ? [
-            'Software Engineer',
-            'Data Scientist',
-            'ML Engineer',
-            'Product Manager',
-          ]
-        : ['Engineering', 'Medicine', 'Business', 'Design'],
-      collegeFit: ctx?.targetCountries.length
-        ? `Well-suited for programs in ${ctx.targetCountries.join(', ')} — focus on universities strong in ${ctx.stream ?? 'your field'}`
-        : 'Explore universities matching your stream and academic performance',
-      skillGaps: ctx?.isCollege
-        ? [
-            'Build portfolio projects',
-            'Prepare for technical interviews',
-            'Strengthen domain certifications',
-          ]
-        : [
-            'Explore stream options',
-            'Build foundational skills',
-            'Research target colleges',
-          ],
-      actionPlan: [
-        'Review your career map timeline',
-        'Save 3–5 college matches',
-        'Upload latest transcript if not done',
-        'Explore relevant internships or programs',
+      recommendedDirections: [
+        'STEM exploration',
+        'Design and innovation',
+        'Research-oriented paths',
       ],
-      fitScore: ctx?.hasTranscript && ctx.targetDegree ? 78 : 65,
+      nextBestAction: 'Explore your dashboard and continue building your profile',
+      careerMatches: ['Engineering', 'Medicine', 'Business', 'Design'],
+      collegeFit:
+        'Your answers suggest openness to rigorous programs that match your interests and working style.',
+      skillGaps: [
+        'Explore stream options',
+        'Build foundational skills',
+        'Research target colleges',
+      ],
+      actionPlan: [
+        'Review your insight report',
+        'Explore college matches',
+        'Complete your profile',
+        'Plan next learning steps',
+      ],
+      fitScore: 70,
     };
-
-    const fullProfile = ctx
-      ? {
-          name: ctx.name,
-          educationLevel: ctx.isCollege ? 'college' : 'school',
-          classGroup: ctx.classGroupLabel ?? ctx.classGroup,
-          stream: ctx.stream,
-          board: ctx.board,
-          school: ctx.school,
-          institution: ctx.transcriptInstitution,
-          degree: ctx.transcriptDegree,
-          program: ctx.transcriptProgram,
-          cgpa: ctx.cgpa,
-          academicScore: ctx.percentage,
-          targetDegree: ctx.targetDegree,
-          targetCountries: ctx.targetCountries,
-          location: [ctx.city, ctx.country].filter(Boolean).join(', '),
-          subjects: ctx.subjects,
-          transcriptSubjects: ctx.transcriptSubjects,
-          semesterCount: ctx.semesterCount,
-          interests: ctx.interests,
-          strengths: ctx.strengths,
-          resumeSummary: ctx.resumeSummary,
-          transcriptSummary: ctx.transcriptSummary,
-          hasTranscript: ctx.hasTranscript,
-          hasResume: ctx.hasResume,
-          documentCount: ctx.documentCount,
-        }
-      : {};
 
     return this.sanitizeReport(
       await this.geminiService.generateStructured<DiagnosticReport>({
-      systemPrompt: `You are an expert student career advisor for UniDiscover. Generate a comprehensive, personalized diagnostic report synthesizing:
-1) Their quiz answers
-2) Full profile (education, goals, location)
-3) Transcript/academic data if available
-4) Resume summary if available
-
-Be specific — reference their actual institution, CGPA, subjects, and goals by name. Write like a professional counselor, not generic. The report powers career map and college matching.`,
-      userPrompt: JSON.stringify({ answers, profile: fullProfile }),
-      schemaDescription: `{
-        "headline": "string — punchy personalized title",
-        "summary": "string — 3-4 sentences weaving profile + answers",
-        "strengths": ["string — 3-5 specific strengths"],
-        "interests": ["string — 3-5 interests"],
+        systemPrompt: `You are an expert student career advisor for UniDiscover. Generate a diagnostic report using ONLY the student's quiz answers. Do not reference profile, transcript, resume, school name, or any data outside the answers object.`,
+        userPrompt: JSON.stringify({ answers }),
+        schemaDescription: `{
+        "headline": "string — clear title based on answers",
+        "summary": "string — 3-4 sentences from answers only",
+        "strengths": ["string — 3-5 strengths inferred from answers"],
+        "interests": ["string — 3-5 interests inferred from answers"],
         "learningStyle": "string",
         "recommendedDirections": ["string — 3-4 career/education directions"],
         "nextBestAction": "string — single clear next step",
-        "profileInsights": ["string — 3-5 insights from their full profile, transcript, resume"],
-        "careerMatches": ["string — 4-6 specific career titles that fit"],
-        "collegeFit": "string — paragraph on college/university fit based on goals and academics",
+        "careerMatches": ["string — 4-6 career titles that fit"],
+        "collegeFit": "string — paragraph on college fit from answers",
         "skillGaps": ["string — 2-4 areas to develop"],
         "actionPlan": ["string — 4-5 concrete action steps in order"],
-        "fitScore": "number 0-100 — how aligned their profile is with stated goals"
+        "fitScore": "number 0-100 — alignment inferred from answers"
       }`,
-      fallback,
-    }),
+        fallback,
+      }),
     );
   }
 }
