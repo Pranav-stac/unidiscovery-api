@@ -700,10 +700,13 @@ export class DiagnosticsService {
       });
     }
 
-    const skipAiCheck =
-      process.env.NODE_ENV !== 'production' || sessionMeta?.devFill === true;
+    // Rule-based validation is enough; skip Gemini quality gate so students are not blocked by flaky AI checks.
+    if (sessionMeta?.devFill === true || !this.geminiService.isConfigured()) {
+      return;
+    }
 
-    if (skipAiCheck || !this.geminiService.isConfigured()) {
+    const skipAiCheck = process.env.DIAGNOSTIC_AI_QUALITY_CHECK === 'true';
+    if (!skipAiCheck) {
       return;
     }
 
