@@ -32,6 +32,10 @@ class ChatDto {
   @IsString() message!: string;
 }
 
+class ReviewConceptDto {
+  @IsString() questionId!: string;
+}
+
 @ApiTags('Homeschooling')
 @ApiBearerAuth()
 @Controller('homeschooling')
@@ -89,6 +93,22 @@ export class HomeschoolingController {
     @Query('refresh') refresh?: string,
   ) {
     return this.homeschoolingService.getTest(user.id, unitId, refresh === '1');
+  }
+
+  @Post('units/:unitId/review-concept')
+  @ApiOperation({ summary: 'Generate a personalized mini-lesson for a missed concept' })
+  reviewConcept(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('unitId') unitId: string,
+    @Body() dto: ReviewConceptDto,
+    @Query('refresh') refresh?: string,
+  ) {
+    return this.homeschoolingService.getConceptReview(
+      user.id,
+      unitId,
+      dto.questionId,
+      refresh === '1',
+    );
   }
 
   @Post('units/:unitId/progress')

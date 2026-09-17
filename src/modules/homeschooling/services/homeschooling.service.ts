@@ -110,6 +110,10 @@ export class HomeschoolingService {
   private readonly mcpUrl: string;
   private readonly lessonLocks = new Map<string, Promise<{ lesson: LessonContent; cached: boolean }>>();
   private readonly quizLocks = new Map<string, Promise<{ quiz: { questions: Omit<QuizQuestion, 'answerIndex'>[] }; cached: boolean }>>();
+  private readonly conceptReviewLocks = new Map<
+    string,
+    Promise<Awaited<ReturnType<HomeschoolingService['buildConceptReview']>>>
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -349,6 +353,92 @@ Spend extra time on weak areas. Use simpler language for gaps and stretch exampl
     return this.getQuiz(userId, unitId, 'test', 8, refresh);
   }
 
+  async getConceptReview(userId: string, unitId: string, questionId: string, refresh = false) {
+    const lockKey = `${userId}:${unitId}:${questionId}:${refresh ? '1' : '0'}`;
+    const inflight = this.conceptReviewLocks.get(lockKey);
+    if (inflight) return inflight;
+    const run = this.buildConceptReview(userId, unitId, questionId, refresh).finally(() => {
+      this.conceptReviewLocks.delete(lockKey);
+    });
+    this.conceptReviewLocks.set(lockKey, run);
+    return run;
+  }
+
+  private async buildConceptReview(
+    userId: string,
+    unitId: string,
+    questionId: string,
+    refresh: boolean,
+  ) {
+    const context = await this.unitContext(userId, unitId);
+    const existing = await this.progress(userId, unitId);
+    const practiceQuiz = (existing.practiceCache ?? { questions: [] }) as QuizSet;
+    const testQuiz = (existing.testCache ?? { questions: [] }) as QuizSet;
+    const question = [...practiceQuiz.questions, ...testQuiz.questions].find(
+      (item) => item.id === questionId,
+    );
+    if (!question) {
+      throw new NotFoundException('Practice or test question not found for this concept.');
+    }
+
+    const cacheKey = `homeschool-concept-review:${userId}:${unitId}:${questionId}`;
+    if (!refresh) {
+      const cached = await this.cacheService.get<{
+        lesson: LessonContent;
+        conceptTag: string;
+        focusArea: string;
+        question: { id: string; prompt: string };
+        personalization: ReturnType<HomeschoolingService['publicPersonalization']>;
+      }>(cacheKey);
+      if (cached) {
+        return { ...cached, cached: true };
+      }
+    }
+
+    const personalization = await this.buildPersonalizationContext(userId, context, existing);
+    const correctAnswer = question.options[Number(question.answerIndex)] ?? '';
+    const lesson = await this.geminiService.generateStructured<LessonContent>({
+      systemPrompt: `You are a ${context.boardLabel} Class ${context.grade} tutor.
+The student missed a question on one concept. Write a short, personalized concept review — not a full chapter lesson.
+Explain the idea simply, address the likely misconception, connect to their known gaps, and rebuild confidence.
+Use 2-3 sections max. Include one worked example tied to the missed question.`,
+      userPrompt: JSON.stringify({
+        subject: context.subject.name,
+        chapter: context.unit.title,
+        chapterNumber: context.unit.chapter,
+        conceptTag: question.conceptTag,
+        focusArea: question.focusArea,
+        missedQuestion: question.prompt,
+        options: question.options,
+        correctAnswer,
+        explanation: question.explanation,
+        chapterSource: personalization.chapterSourceText.slice(0, 2500),
+        studentProfile: {
+          diagnosticCompleted: personalization.diagnosticCompleted,
+          strengths: personalization.strengths,
+          interests: personalization.interests,
+          skillGaps: personalization.skillGaps,
+          learningStyle: personalization.learningStyle,
+          aiSummary: personalization.aiSummary,
+          focusNote: personalization.focusNote,
+        },
+      }),
+      schemaDescription:
+        '{ title, summary, sections: [{ heading, body, keyPoints: string[] }], workedExample: { problem, steps: string[], answer }, recap: string[] }',
+      fallback: this.fallbackConceptReview(question, context),
+    });
+
+    const payload = {
+      lesson,
+      conceptTag: question.conceptTag ?? 'Concept review',
+      focusArea: question.focusArea ?? context.unit.title,
+      question: { id: question.id, prompt: question.prompt },
+      personalization: this.publicPersonalization(personalization),
+    };
+    await this.cacheService.set(cacheKey, payload, 86_400);
+    return { ...payload, cached: false };
+  }
+
   async saveProgress(
     userId: string,
     unitId: string,
@@ -363,6 +453,9 @@ Spend extra time on weak areas. Use simpler language for gaps and stretch exampl
       selectedIndex: number | null;
       correctIndex: number;
       explanation: string;
+      focusArea?: string;
+      conceptTag?: string;
+      prompt?: string;
     }> = [];
 
     if (input.learnDone) data.learnDone = true;
@@ -701,6 +794,9 @@ This is an exam-style check — NOT practice. Rules:
       selectedIndex: answers[index] ?? null,
       correctIndex: Number(question.answerIndex),
       explanation: question.explanation,
+      focusArea: question.focusArea,
+      conceptTag: question.conceptTag,
+      prompt: question.prompt,
     }));
   }
 
@@ -929,6 +1025,53 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     } catch {
       return `Official chapter: ${unit.title}. Source: ${unit.textbookUrl}`;
     }
+  }
+
+  private fallbackConceptReview(
+    question: QuizQuestion,
+    context: Awaited<ReturnType<HomeschoolingService['unitContext']>>,
+  ): LessonContent {
+    const focus = question.focusArea ?? context.unit.title;
+    const tag = question.conceptTag ?? 'This concept';
+    return {
+      title: `${tag}: focused review`,
+      summary: `Let's rebuild ${tag} — the idea behind "${focus}" in ${context.unit.title}.`,
+      sections: [
+        {
+          heading: 'What went wrong',
+          body: question.explanation || `The correct approach for "${question.prompt}" depends on the core rule in ${focus}.`,
+          keyPoints: [
+            `Focus area: ${focus}`,
+            'Read the question twice before choosing an option',
+            'Match each option to the definition or rule you know',
+          ],
+        },
+        {
+          heading: 'Rebuild the concept',
+          body: `In ${context.subject.name}, ${focus} is a building block for this chapter. Start with the definition, then check how it appears in a simple example before tackling exam-style traps.`,
+          keyPoints: [
+            `Concept: ${tag}`,
+            'Write the rule in your own words',
+            'Try one easy example, then one harder one',
+          ],
+        },
+      ],
+      workedExample: {
+        problem: question.prompt,
+        steps: [
+          'Identify what the question is really asking',
+          `Recall the rule for ${focus}`,
+          'Eliminate options that break that rule',
+          'Pick the option that fits every condition',
+        ],
+        answer: question.options[Number(question.answerIndex)] ?? 'See the official explanation above.',
+      },
+      recap: [
+        `${tag} is worth revisiting before your next practice round`,
+        `Link ${focus} back to the official textbook chapter`,
+        'Retry practice once this review feels clear',
+      ],
+    };
   }
 
   private fallbackLesson(title: string, subject: string, grade: number): LessonContent {

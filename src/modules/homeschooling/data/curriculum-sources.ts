@@ -1083,7 +1083,7 @@ export function normalizeStream(stream?: string | null) {
 }
 
 export function ncertPdfUrl(bookCode: string, chapter: number) {
-  return `https://ncert.nic.in/textbook/pdf/${bookCode}${String(chapter).padStart(2, '0')}.pdf`;
+  return `https://www.ncert.nic.in/textbook/pdf/${bookCode}${String(chapter).padStart(2, '0')}.pdf`;
 }
 
 export function officialPortal(board: BoardKey, grade: number) {
