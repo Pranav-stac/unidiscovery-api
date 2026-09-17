@@ -5,6 +5,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -34,6 +35,11 @@ class ChatDto {
 
 class ReviewConceptDto {
   @IsString() questionId!: string;
+}
+
+class ReviewConceptsDto {
+  @IsArray() @IsString({ each: true }) questionIds!: string[];
+  @IsOptional() @IsIn(['practice', 'test']) mode?: 'practice' | 'test';
 }
 
 @ApiTags('Homeschooling')
@@ -107,6 +113,23 @@ export class HomeschoolingController {
       user.id,
       unitId,
       dto.questionId,
+      refresh === '1',
+    );
+  }
+
+  @Post('units/:unitId/review-concepts')
+  @ApiOperation({ summary: 'Generate a personalized study for all missed concepts' })
+  reviewConcepts(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('unitId') unitId: string,
+    @Body() dto: ReviewConceptsDto,
+    @Query('refresh') refresh?: string,
+  ) {
+    return this.homeschoolingService.getAllConceptsReview(
+      user.id,
+      unitId,
+      dto.questionIds,
+      dto.mode ?? 'practice',
       refresh === '1',
     );
   }

@@ -114,6 +114,10 @@ export class HomeschoolingService {
     string,
     Promise<Awaited<ReturnType<HomeschoolingService['buildConceptReview']>>>
   >();
+  private readonly allConceptReviewLocks = new Map<
+    string,
+    Promise<Awaited<ReturnType<HomeschoolingService['buildAllConceptsReview']>>>
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -351,6 +355,129 @@ Spend extra time on weak areas. Use simpler language for gaps and stretch exampl
 
   async getTest(userId: string, unitId: string, refresh = false) {
     return this.getQuiz(userId, unitId, 'test', 8, refresh);
+  }
+
+  async getAllConceptsReview(
+    userId: string,
+    unitId: string,
+    questionIds: string[],
+    mode: 'practice' | 'test' = 'practice',
+    refresh = false,
+  ) {
+    const uniqueIds = [...new Set(questionIds.filter(Boolean))];
+    if (!uniqueIds.length) {
+      throw new NotFoundException('No missed questions were provided for review.');
+    }
+    const lockKey = `${userId}:${unitId}:all:${mode}:${uniqueIds.join(',')}:${refresh ? '1' : '0'}`;
+    const inflight = this.allConceptReviewLocks.get(lockKey);
+    if (inflight) return inflight;
+    const run = this.buildAllConceptsReview(userId, unitId, uniqueIds, mode, refresh).finally(() => {
+      this.allConceptReviewLocks.delete(lockKey);
+    });
+    this.allConceptReviewLocks.set(lockKey, run);
+    return run;
+  }
+
+  private async buildAllConceptsReview(
+    userId: string,
+    unitId: string,
+    questionIds: string[],
+    mode: 'practice' | 'test',
+    refresh: boolean,
+  ) {
+    const context = await this.unitContext(userId, unitId);
+    const existing = await this.progress(userId, unitId);
+    const practiceQuiz = (existing.practiceCache ?? { questions: [] }) as QuizSet;
+    const testQuiz = (existing.testCache ?? { questions: [] }) as QuizSet;
+    const pool = mode === 'test' ? testQuiz.questions : practiceQuiz.questions;
+    const fallbackPool = [...practiceQuiz.questions, ...testQuiz.questions];
+    const missed = questionIds
+      .map((id) => pool.find((item) => item.id === id) ?? fallbackPool.find((item) => item.id === id))
+      .filter((item): item is QuizQuestion => Boolean(item));
+    if (!missed.length) {
+      throw new NotFoundException('Could not find the missed questions for this review.');
+    }
+
+    const cacheKey = `homeschool-concept-review-all:${userId}:${unitId}:${mode}:${questionIds.join(',')}`;
+    if (!refresh) {
+      const cached = await this.cacheService.get<{
+        lesson: LessonContent;
+        concepts: Array<{
+          conceptTag: string;
+          focusArea: string;
+          questions: Array<{ id: string; prompt: string }>;
+        }>;
+        personalization: ReturnType<HomeschoolingService['publicPersonalization']>;
+      }>(cacheKey);
+      if (cached) return { ...cached, cached: true };
+    }
+
+    const personalization = await this.buildPersonalizationContext(userId, context, existing);
+    const conceptMap = new Map<
+      string,
+      { conceptTag: string; focusArea: string; questions: QuizQuestion[] }
+    >();
+    for (const question of missed) {
+      const key = `${question.conceptTag ?? 'concept'}::${question.focusArea ?? context.unit.title}`;
+      const entry = conceptMap.get(key) ?? {
+        conceptTag: question.conceptTag ?? 'Concept review',
+        focusArea: question.focusArea ?? context.unit.title,
+        questions: [],
+      };
+      entry.questions.push(question);
+      conceptMap.set(key, entry);
+    }
+    const concepts = [...conceptMap.values()];
+
+    const lesson = await this.geminiService.generateStructured<LessonContent>({
+      systemPrompt: `You are a ${context.boardLabel} Class ${context.grade} tutor.
+The student missed multiple questions across several weak concepts. Write one cohesive personalized study guide covering ALL listed concepts.
+Give each weak concept its own section (heading = concept name). Address misconceptions, connect to diagnostic gaps, and rebuild confidence.
+Include one worked example that ties the ideas together. End with a short recap list.`,
+      userPrompt: JSON.stringify({
+        subject: context.subject.name,
+        chapter: context.unit.title,
+        chapterNumber: context.unit.chapter,
+        mode,
+        weakConcepts: concepts.map((concept) => ({
+          conceptTag: concept.conceptTag,
+          focusArea: concept.focusArea,
+          missedQuestions: concept.questions.map((question) => ({
+            prompt: question.prompt,
+            correctAnswer: question.options[Number(question.answerIndex)] ?? '',
+            explanation: question.explanation,
+          })),
+        })),
+        chapterSource: personalization.chapterSourceText.slice(0, 2500),
+        studentProfile: {
+          diagnosticCompleted: personalization.diagnosticCompleted,
+          strengths: personalization.strengths,
+          interests: personalization.interests,
+          skillGaps: personalization.skillGaps,
+          learningStyle: personalization.learningStyle,
+          aiSummary: personalization.aiSummary,
+          focusNote: personalization.focusNote,
+        },
+      }),
+      schemaDescription:
+        '{ title, summary, sections: [{ heading, body, keyPoints: string[] }], workedExample: { problem, steps: string[], answer }, recap: string[] }',
+      fallback: this.fallbackAllConceptsReview(concepts, context),
+    });
+
+    const payload = {
+      lesson,
+      concepts: concepts.map((concept) => ({
+        conceptTag: concept.conceptTag,
+        focusArea: concept.focusArea,
+        questions: concept.questions.map((question) => ({
+          id: question.id,
+          prompt: question.prompt,
+        })),
+      })),
+      personalization: this.publicPersonalization(personalization),
+    };
+    await this.cacheService.set(cacheKey, payload, 86_400);
+    return { ...payload, cached: false };
   }
 
   async getConceptReview(userId: string, unitId: string, questionId: string, refresh = false) {
@@ -1025,6 +1152,32 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     } catch {
       return `Official chapter: ${unit.title}. Source: ${unit.textbookUrl}`;
     }
+  }
+
+  private fallbackAllConceptsReview(
+    concepts: Array<{ conceptTag: string; focusArea: string; questions: QuizQuestion[] }>,
+    context: Awaited<ReturnType<HomeschoolingService['unitContext']>>,
+  ): LessonContent {
+    return {
+      title: `Weak concepts review — ${context.unit.title}`,
+      summary: `You missed ${concepts.length} concept area(s). Work through each section below before your next practice round.`,
+      sections: concepts.map((concept) => ({
+        heading: concept.conceptTag,
+        body:
+          concept.questions[0]?.explanation ??
+          `Review ${concept.focusArea} using the official textbook, then retry the missed question in your own words.`,
+        keyPoints: [
+          `Focus: ${concept.focusArea}`,
+          ...concept.questions.slice(0, 2).map((question) => `Missed: ${question.prompt}`),
+        ],
+      })),
+      workedExample: {
+        problem: concepts[0]?.questions[0]?.prompt ?? `Explain one idea from ${context.unit.title}.`,
+        steps: concepts.map((concept) => `Relearn ${concept.conceptTag} and write one sentence in your own words`),
+        answer: 'You can explain each weak concept without guessing.',
+      },
+      recap: concepts.map((concept) => `Revisit ${concept.conceptTag} before practicing again`),
+    };
   }
 
   private fallbackConceptReview(
