@@ -1,15 +1,13 @@
 import {
   DIAGNOSTIC_QUESTIONS_REGISTRY,
   DiagnosticQuestion,
+  type ClassGroupType,
 } from './legacy-questions.config';
+import { buildCollegeStorySteps } from './college-story.config';
 import type { DiagnosticStep } from '../services/diagnostics.service';
 import type { StoryProfileContext } from './story-profile.types';
 
 export type { StoryProfileContext } from './story-profile.types';
-
-/** Fixed grade band for the standard diagnostic (same questions for every student). */
-const STANDARD_CLASS_GROUP = '11-12' as const;
-const STANDARD_GRADE = 12;
 
 const STATIC_SECTION_NARRATIVE: Record<string, string> = {
   'Academic Profile':
@@ -42,6 +40,12 @@ const STATIC_SECTION_NARRATIVE: Record<string, string> = {
     'Which subjects and streams interest you most?',
   'Extracurricular & College Direction':
     'Activities, interests, and the bigger picture beyond marks.',
+};
+
+const SCHOOL_GROUP_LABELS: Record<ClassGroupType, string> = {
+  '6-8': 'Classes 6–8',
+  '9-10': 'Classes 9–10',
+  '11-12': 'Classes 11–12',
 };
 
 function mapQuestionType(q: DiagnosticQuestion): DiagnosticStep['type'] {
@@ -98,14 +102,55 @@ function chapterIntro(section: string): DiagnosticStep {
   };
 }
 
-/** Standard diagnostic — identical steps for every student. */
-export function buildStandardDiagnosticSteps(): DiagnosticStep[] {
-  const questions = DIAGNOSTIC_QUESTIONS_REGISTRY.filter(
-    (q) =>
-      q.applicableClassGroups.includes(STANDARD_CLASS_GROUP) &&
-      q.applicableGrades.includes(STANDARD_GRADE),
-  ).sort((a, b) => a.order - b.order);
+function resolveSchoolClassGroup(
+  classGroup: string | null | undefined,
+): ClassGroupType {
+  if (classGroup === '6-8' || classGroup === '9-10' || classGroup === '11-12') {
+    return classGroup;
+  }
+  return '11-12';
+}
 
+function resolveEffectiveGrade(
+  grade: number | null | undefined,
+  classGroup: ClassGroupType,
+): number {
+  let effectiveGrade = grade ?? 12;
+  if (classGroup === '6-8' && ![6, 7, 8].includes(effectiveGrade)) {
+    effectiveGrade = 8;
+  } else if (classGroup === '9-10' && ![9, 10].includes(effectiveGrade)) {
+    effectiveGrade = 10;
+  } else if (classGroup === '11-12' && ![11, 12].includes(effectiveGrade)) {
+    effectiveGrade = 12;
+  }
+  return effectiveGrade;
+}
+
+/** Filter legacy registry by class group and grade — matches old diagnostic backend. */
+export function getQuestionsForStudent(
+  grade: number | null | undefined,
+  classGroup: ClassGroupType,
+): DiagnosticQuestion[] {
+  const effectiveGrade = resolveEffectiveGrade(grade, classGroup);
+  const filtered = DIAGNOSTIC_QUESTIONS_REGISTRY.filter(
+    (q) =>
+      q.applicableClassGroups.includes(classGroup) &&
+      q.applicableGrades.includes(effectiveGrade),
+  );
+
+  if (filtered.length === 0) {
+    return DIAGNOSTIC_QUESTIONS_REGISTRY.filter((q) =>
+      q.applicableClassGroups.includes(classGroup),
+    ).sort((a, b) => a.order - b.order);
+  }
+
+  return filtered.sort((a, b) => a.order - b.order);
+}
+
+function buildStepsFromQuestions(
+  questions: DiagnosticQuestion[],
+  prologueSubtitle: string,
+): DiagnosticStep[] {
   const steps: DiagnosticStep[] = [
     {
       id: 'story-prologue',
@@ -113,8 +158,7 @@ export function buildStandardDiagnosticSteps(): DiagnosticStep[] {
       stepKind: 'chapter',
       chapter: 'Your Story',
       title: 'Your discovery journey begins',
-      subtitle:
-        'A structured diagnostic covering academics, interests, aptitude, and future direction. Answer honestly — there are no wrong responses.',
+      subtitle: prologueSubtitle,
       intro: 'Prologue',
     },
   ];
@@ -154,11 +198,33 @@ export function buildStandardDiagnosticSteps(): DiagnosticStep[] {
   return steps;
 }
 
-/** @deprecated Profile context is ignored — use buildStandardDiagnosticSteps. */
-export function buildStoryDiagnosticSteps(
-  _ctx: StoryProfileContext,
+export function buildSchoolDiagnosticSteps(
+  classGroup: ClassGroupType,
+  grade?: number | null,
 ): DiagnosticStep[] {
-  return buildStandardDiagnosticSteps();
+  const questions = getQuestionsForStudent(grade, classGroup);
+  const label = SCHOOL_GROUP_LABELS[classGroup];
+  return buildStepsFromQuestions(
+    questions,
+    `A structured diagnostic for ${label} — academics, interests, aptitude, and future direction. Answer honestly — there are no wrong responses.`,
+  );
+}
+
+/** Grade- and class-specific diagnostic steps from profile context. */
+export function buildStoryDiagnosticSteps(
+  ctx: StoryProfileContext,
+): DiagnosticStep[] {
+  if (ctx.isCollege) {
+    return buildCollegeStorySteps(ctx);
+  }
+
+  const classGroup = resolveSchoolClassGroup(ctx.classGroup);
+  return buildSchoolDiagnosticSteps(classGroup, ctx.grade);
+}
+
+/** Fallback when profile is missing — defaults to Grade 11–12. */
+export function buildStandardDiagnosticSteps(): DiagnosticStep[] {
+  return buildSchoolDiagnosticSteps('11-12', 12);
 }
 
 export function countStoryQuestions(steps: DiagnosticStep[]): number {

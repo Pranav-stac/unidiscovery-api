@@ -10,7 +10,11 @@ import { PrismaService } from '../../../infrastructure/database/prisma/prisma.se
 import { GeminiService } from '../../../infrastructure/ai/gemini/gemini.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 
-import { buildStandardDiagnosticSteps } from '../data/legacy-story.adapter';
+import {
+  buildStandardDiagnosticSteps,
+  buildStoryDiagnosticSteps,
+} from '../data/legacy-story.adapter';
+import type { StoryProfileContext } from '../data/story-profile.types';
 import { getDevFillAnswer } from '../data/dev-fill.answers';
 import {
   RETEST_MESSAGE,
@@ -66,8 +70,10 @@ export class DiagnosticsService {
     expires: number;
   } | null = null;
 
-  private staticStepsCache: { steps: DiagnosticStep[]; expires: number } | null =
-    null;
+  private stepsCache = new Map<
+    string,
+    { steps: DiagnosticStep[]; expires: number }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -76,8 +82,24 @@ export class DiagnosticsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  private invalidateStepsCache(_userId?: string) {
-    this.staticStepsCache = null;
+  private invalidateStepsCache(userId?: string) {
+    if (!userId) {
+      this.stepsCache.clear();
+      return;
+    }
+    for (const key of this.stepsCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        this.stepsCache.delete(key);
+      }
+    }
+  }
+
+  private stepsCacheKey(
+    userId: string,
+    ctx: StoryProfileContext | null,
+  ): string {
+    if (!ctx) return `${userId}:default`;
+    return `${userId}:${ctx.isCollege ? 'college' : 'school'}:${ctx.classGroup ?? 'unknown'}:${ctx.grade ?? 0}`;
   }
 
   async getActiveTemplate(): Promise<DiagnosticTemplate | null> {
@@ -429,20 +451,22 @@ export class DiagnosticsService {
     };
   }
 
-  async getStepsForUser(_userId: string): Promise<DiagnosticStep[]> {
-    if (
-      this.staticStepsCache &&
-      this.staticStepsCache.expires > Date.now()
-    ) {
-      return this.staticStepsCache.steps;
+  async getStepsForUser(userId: string): Promise<DiagnosticStep[]> {
+    const ctx = await this.getProfileContext(userId);
+    const cacheKey = this.stepsCacheKey(userId, ctx);
+    const cached = this.stepsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.steps;
     }
 
-    const steps = buildStandardDiagnosticSteps();
+    const steps = ctx
+      ? buildStoryDiagnosticSteps(ctx)
+      : buildStandardDiagnosticSteps();
 
-    this.staticStepsCache = {
+    this.stepsCache.set(cacheKey, {
       steps,
       expires: Date.now() + 5 * 60 * 1000,
-    };
+    });
 
     return steps;
   }
