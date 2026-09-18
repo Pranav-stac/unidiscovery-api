@@ -17,6 +17,39 @@ import {
 
 type PlanRow = Awaited<ReturnType<ActivityPlannerService['fetchRow']>>;
 
+function isValidDate(value?: Date | null) {
+  return Boolean(value && !Number.isNaN(value.getTime()));
+}
+
+function parseRoadmapDate(value: string | Date | undefined, monthOffset: number) {
+  if (value instanceof Date && isValidDate(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (isValidDate(parsed)) return parsed;
+  }
+  const fallback = new Date();
+  fallback.setHours(0, 0, 0, 0);
+  fallback.setMonth(fallback.getMonth() + monthOffset);
+  return fallback;
+}
+
+function normalizeRoadmapTask(task: RoadmapTaskInput, index: number): RoadmapTaskInput {
+  const startDate = parseRoadmapDate(task.startDate, 0);
+  let dueDate = parseRoadmapDate(task.dueDate, 1);
+  if (dueDate.getTime() <= startDate.getTime()) {
+    dueDate = new Date(startDate);
+    dueDate.setMonth(dueDate.getMonth() + 1);
+  }
+  return {
+    ...task,
+    title: task.title?.trim() || `Roadmap task ${index + 1}`,
+    startDate,
+    dueDate,
+    priority: task.priority ?? 2,
+    responsibility: task.responsibility ?? 'STUDENT',
+  };
+}
+
 @Injectable()
 export class ActivityPlannerService {
   constructor(
@@ -212,11 +245,37 @@ export class ActivityPlannerService {
       linkedCareer?: string;
     },
   ) {
+    const startDate = isValidDate(data.startDate) ? data.startDate : undefined;
+    const dueDate = isValidDate(data.dueDate) ? data.dueDate : undefined;
+    const targetMonth =
+      dueDate?.getMonth() !== undefined
+        ? dueDate.getMonth() + 1
+        : Number.isFinite(data.targetMonth)
+          ? data.targetMonth
+          : undefined;
+    const targetYear =
+      dueDate?.getFullYear() ??
+      (Number.isFinite(data.targetYear) ? data.targetYear : undefined);
+
     const row = await this.prisma.activityPlanItem.create({
       data: {
         userId,
-        ...data,
+        title: data.title,
+        type: data.type,
         category: data.category ?? 'OTHER',
+        subcategory: data.subcategory,
+        activityId: data.activityId,
+        startDate,
+        dueDate,
+        targetMonth,
+        targetYear,
+        country: data.country,
+        priority: data.priority ?? 2,
+        notes: data.notes,
+        description: data.description,
+        whyItMatters: data.whyItMatters,
+        responsibility: data.responsibility ?? 'STUDENT',
+        linkedCareer: data.linkedCareer,
       },
       include: { activity: true },
     });
@@ -352,12 +411,17 @@ export class ActivityPlannerService {
       });
 
       if (ai.tasks?.length) {
-        tasks = ai.tasks.map((task) => ({
-          ...task,
-          startDate: new Date(task.startDate),
-          dueDate: new Date(task.dueDate),
-          responsibility: task.responsibility ?? 'STUDENT',
-        }));
+        tasks = ai.tasks.map((task, index) =>
+          normalizeRoadmapTask(
+            {
+              ...task,
+              startDate: parseRoadmapDate(task.startDate, 0),
+              dueDate: parseRoadmapDate(task.dueDate, 1),
+              responsibility: task.responsibility ?? 'STUDENT',
+            },
+            index,
+          ),
+        );
         source = 'ai';
       }
     }
@@ -366,6 +430,8 @@ export class ActivityPlannerService {
       tasks = fallbackUsRoadmap(countries);
       source = 'template';
     }
+
+    tasks = tasks.map((task, index) => normalizeRoadmapTask(task, index));
 
     if (replace) {
       await this.prisma.activityPlanItem.deleteMany({ where: { userId } });
@@ -380,8 +446,6 @@ export class ActivityPlannerService {
           subcategory: task.subcategory,
           startDate: task.startDate,
           dueDate: task.dueDate,
-          targetMonth: task.dueDate.getMonth() + 1,
-          targetYear: task.dueDate.getFullYear(),
           country: task.country,
           description: task.description,
           whyItMatters: task.whyItMatters,

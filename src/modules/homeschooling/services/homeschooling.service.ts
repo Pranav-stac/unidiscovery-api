@@ -350,11 +350,11 @@ Spend extra time on weak areas. Use simpler language for gaps and stretch exampl
   }
 
   async getPractice(userId: string, unitId: string, refresh = false) {
-    return this.getQuiz(userId, unitId, 'practice', 6, refresh);
+    return this.getQuiz(userId, unitId, 'practice', 8, refresh);
   }
 
   async getTest(userId: string, unitId: string, refresh = false) {
-    return this.getQuiz(userId, unitId, 'test', 8, refresh);
+    return this.getQuiz(userId, unitId, 'test', 15, refresh);
   }
 
   async getAllConceptsReview(
