@@ -6,7 +6,7 @@ services:
     region: singapore
     repo: https://github.com/Pranav-stac/unidiscovery-api
     branch: main
-    buildCommand: npm install && npx prisma generate && npm run build
+    buildCommand: npm install && npx prisma generate && (npx prisma db execute --file prisma/add-planner-fields.sql --schema prisma/schema.prisma || true) && npm run build
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
