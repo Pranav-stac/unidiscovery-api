@@ -1375,10 +1375,12 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     if (typeof value === 'object') {
       const record = value as Record<string, unknown>;
       if (Array.isArray(record.labels) && Array.isArray(record.values)) {
-        return record.labels
+        const labels = record.labels as unknown[];
+        const values = record.values as unknown[];
+        return labels
           .map((label, index) => ({
             label: String(label ?? '').trim(),
-            value: Number(record.values?.[index] ?? 0),
+            value: Number(values[index] ?? 0),
           }))
           .filter((row) => row.label && !Number.isNaN(row.value));
       }
