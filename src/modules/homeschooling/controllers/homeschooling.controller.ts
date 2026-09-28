@@ -25,6 +25,7 @@ class SetupDto {
 
 class ProgressDto {
   @IsOptional() @IsBoolean() learnDone?: boolean;
+  @IsOptional() @IsBoolean() interactiveDone?: boolean;
   @IsOptional() @IsArray() @IsInt({ each: true }) practiceAnswers?: number[];
   @IsOptional() @IsArray() @IsInt({ each: true }) testAnswers?: number[];
 }
@@ -81,6 +82,16 @@ export class HomeschoolingController {
     @Query('refresh') refresh?: string,
   ) {
     return this.homeschoolingService.getLesson(user.id, unitId, refresh === '1');
+  }
+
+  @Post('units/:unitId/interactive')
+  @ApiOperation({ summary: 'Generate an AI-powered interactive learning journey for a chapter' })
+  interactive(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('unitId') unitId: string,
+    @Query('refresh') refresh?: string,
+  ) {
+    return this.homeschoolingService.getInteractive(user.id, unitId, refresh === '1');
   }
 
   @Post('units/:unitId/practice')

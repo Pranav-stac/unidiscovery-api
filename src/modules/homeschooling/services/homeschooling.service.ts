@@ -25,6 +25,10 @@ import {
   hasOfficialFiles,
   isFreshSyllabus,
 } from './official-media.service';
+import {
+  INTERACTIVE_SCHEMA_DESCRIPTION,
+  buildInteractiveSystemPrompt,
+} from '../data/interactive-prompts';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 import { pipeTextStreamToSse } from '../../../common/utils/sse-stream.util';
@@ -60,6 +64,45 @@ type LessonContent = {
   summary: string;
   sections: Array<{ heading: string; body: string; keyPoints: string[] }>;
   workedExample: { problem: string; steps: string[]; answer: string };
+  recap: string[];
+};
+
+type InteractiveVisual = {
+  type: 'bar-chart' | 'line-graph' | 'pie' | 'diagram' | 'animation' | 'comparison' | 'timeline';
+  title?: string;
+  caption?: string;
+  data?: Array<{ label: string; value: number; color?: string }>;
+  nodes?: Array<{ id: string; label: string }>;
+  edges?: Array<{ from: string; to: string; label?: string }>;
+  frames?: Array<{ title: string; description: string; highlight?: string }>;
+  left?: { title: string; points: string[] };
+  right?: { title: string; points: string[] };
+  events?: Array<{ year: string; title: string; description: string }>;
+};
+
+type InteractiveExplore = {
+  prompt: string;
+  items: Array<{ label: string; detail: string }>;
+};
+
+type InteractiveConcept = {
+  id: string;
+  title: string;
+  hook: string;
+  explanation: string;
+  fundamental: string;
+  visual?: InteractiveVisual;
+  explore?: InteractiveExplore;
+};
+
+type InteractiveLearningContent = {
+  title: string;
+  subtitle: string;
+  opening: string;
+  estimatedMinutes: number;
+  subjectFocus: string;
+  fundamentals: string[];
+  concepts: InteractiveConcept[];
   recap: string[];
 };
 
@@ -109,6 +152,10 @@ export class HomeschoolingService {
   private readonly logger = new Logger(HomeschoolingService.name);
   private readonly mcpUrl: string;
   private readonly lessonLocks = new Map<string, Promise<{ lesson: LessonContent; cached: boolean }>>();
+  private readonly interactiveLocks = new Map<
+    string,
+    Promise<{ interactive: InteractiveLearningContent; cached: boolean }>
+  >();
   private readonly quizLocks = new Map<string, Promise<{ quiz: { questions: Omit<QuizQuestion, 'answerIndex'>[] }; cached: boolean }>>();
   private readonly conceptReviewLocks = new Map<
     string,
@@ -291,9 +338,70 @@ export class HomeschoolingService {
       testScore: progress?.testScore ?? null,
       mastered: Boolean(progress?.mastered),
       hasLesson: Boolean(progress?.lessonCache),
+      hasInteractive: Boolean(progress?.interactiveCache),
+      interactiveDone: Boolean(progress?.interactiveDone),
       hasPractice: Boolean(progress?.practiceCache),
       hasTest: Boolean(progress?.testCache),
     };
+  }
+
+  async getInteractive(userId: string, unitId: string, refresh = false) {
+    const lockKey = `${userId}:${unitId}:interactive:${refresh ? '1' : '0'}`;
+    const inflight = this.interactiveLocks.get(lockKey);
+    if (inflight) return inflight;
+    const run = this.buildInteractive(userId, unitId, refresh).finally(() => {
+      this.interactiveLocks.delete(lockKey);
+    });
+    this.interactiveLocks.set(lockKey, run);
+    return run;
+  }
+
+  private async buildInteractive(userId: string, unitId: string, refresh = false) {
+    const context = await this.unitContext(userId, unitId);
+    const existing = await this.progress(userId, unitId);
+    if (!refresh && existing.interactiveCache) {
+      return {
+        interactive: this.normalizeInteractiveContent(existing.interactiveCache),
+        cached: true,
+      };
+    }
+    const personalization = await this.buildPersonalizationContext(userId, context, existing);
+    const lesson = (existing.lessonCache ?? null) as LessonContent | null;
+    const subjectPrompt = buildInteractiveSystemPrompt({
+      boardLabel: context.boardLabel,
+      grade: context.grade,
+      subjectId: context.subject.id,
+      subjectName: context.subject.name,
+    });
+    const interactive = await this.geminiService.generateStructured<InteractiveLearningContent>({
+      systemPrompt: subjectPrompt,
+      userPrompt: JSON.stringify({
+        board: context.boardLabel,
+        grade: context.grade,
+        subject: context.subject.name,
+        subjectId: context.subject.id,
+        chapter: context.unit.chapter,
+        title: context.unit.title,
+        chapterSource: personalization.chapterSourceText.slice(0, 5000),
+        lessonSummary: lesson?.summary,
+        lessonSections: lesson?.sections?.map((s) => s.heading),
+        studentProfile: {
+          diagnosticCompleted: personalization.diagnosticCompleted,
+          strengths: personalization.strengths,
+          interests: personalization.interests,
+          skillGaps: personalization.skillGaps,
+          learningStyle: personalization.learningStyle,
+          focusNote: personalization.focusNote,
+        },
+      }),
+      schemaDescription: INTERACTIVE_SCHEMA_DESCRIPTION,
+      fallback: this.fallbackInteractive(context),
+    });
+    await this.prisma.homeschoolProgress.update({
+      where: { userId_unitId: { userId, unitId } },
+      data: { interactiveCache: interactive as object },
+    });
+    return { interactive, cached: false };
   }
 
   async getLesson(userId: string, unitId: string, refresh = false) {
@@ -569,7 +677,12 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
   async saveProgress(
     userId: string,
     unitId: string,
-    input: { learnDone?: boolean; practiceAnswers?: number[]; testAnswers?: number[] },
+    input: {
+      learnDone?: boolean;
+      interactiveDone?: boolean;
+      practiceAnswers?: number[];
+      testAnswers?: number[];
+    },
   ) {
     await this.unitContext(userId, unitId);
     const row = await this.progress(userId, unitId);
@@ -586,6 +699,10 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
     }> = [];
 
     if (input.learnDone) data.learnDone = true;
+    if (input.interactiveDone) {
+      data.interactiveDone = true;
+      data.learnDone = true;
+    }
     if (input.practiceAnswers) {
       const quiz = (row.practiceCache ?? { questions: [] }) as QuizSet;
       data.practiceScore = this.score(quiz.questions, input.practiceAnswers);
@@ -621,6 +738,7 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
     void this.cacheService.del(`dashboard:${userId}`);
     return {
       learnDone: updated.learnDone,
+      interactiveDone: updated.interactiveDone,
       practiceScore: updated.practiceScore,
       testScore: updated.testScore,
       mastered: updated.mastered,
@@ -977,19 +1095,11 @@ This is an exam-style check — NOT practice. Rules:
     const units = subject.units.map((unit, index) => {
       const unitId = this.unitId(board, grade, subjectId, unit.chapter);
       const progress = progressMap.get(unitId);
-      const unlocked =
-        index === 0 ||
-        subject.units.slice(0, index).every((prior) => {
-          const priorId = this.unitId(board, grade, subjectId, prior.chapter);
-          return Boolean(progressMap.get(priorId)?.mastered);
-        });
-      const status = !unlocked
-        ? 'locked'
-        : progress?.mastered
-          ? 'mastered'
-          : progress?.learnDone || progress?.practiceScore != null
-            ? 'in_progress'
-            : 'available';
+      const status = progress?.mastered
+        ? 'mastered'
+        : progress?.learnDone || progress?.practiceScore != null
+          ? 'in_progress'
+          : 'available';
       return {
         id: unitId,
         chapter: unit.chapter,
@@ -1223,6 +1333,101 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
         `${tag} is worth revisiting before your next practice round`,
         `Link ${focus} back to the official textbook chapter`,
         'Retry practice once this review feels clear',
+      ],
+    };
+  }
+
+  private normalizeInteractiveContent(raw: unknown): InteractiveLearningContent {
+    const data = raw as InteractiveLearningContent & {
+      overview?: string;
+      topicsCovered?: string[];
+      steps?: Array<{
+        id: string;
+        title: string;
+        content: string;
+        callToAction?: string;
+        explanation?: string;
+        visual?: InteractiveVisual;
+      }>;
+    };
+    if (data.concepts?.length) return data;
+    if (data.steps?.length) {
+      return {
+        title: data.title,
+        subtitle: data.subtitle,
+        opening: data.opening ?? data.overview ?? '',
+        estimatedMinutes: data.estimatedMinutes ?? 15,
+        subjectFocus: data.subjectFocus ?? 'Interactive learning',
+        fundamentals: data.fundamentals ?? data.topicsCovered ?? [],
+        concepts: data.steps.map((step) => ({
+          id: step.id,
+          title: step.title,
+          hook: step.callToAction ?? step.title,
+          explanation: step.content,
+          fundamental: step.explanation ?? `Core idea: ${step.title}`,
+          visual: step.visual,
+        })),
+        recap: data.recap ?? [],
+      };
+    }
+    return data;
+  }
+
+  private fallbackInteractive(
+    context: Awaited<ReturnType<HomeschoolingService['unitContext']>>,
+  ): InteractiveLearningContent {
+    const title = context.unit.title;
+    const subject = context.subject.name;
+    return {
+      title,
+      subtitle: `Core ideas in ${title}`,
+      opening: `Let's build a clear mental model of ${title} in ${subject}. Read through each concept — visuals and tap-to-explore sections will help the fundamentals stick.`,
+      estimatedMinutes: 15,
+      subjectFocus: `${subject} fundamentals`,
+      fundamentals: [
+        `Understand what ${title} means at its core`,
+        'See how the main ideas connect',
+        'Connect theory to examples you can picture',
+      ],
+      concepts: [
+        {
+          id: 'concept-1',
+          title: `What is ${title}?`,
+          hook: `Every chapter starts with one big question: what exactly is ${title}?`,
+          explanation: `In ${subject}, ${title} is a key part of your syllabus. Start with the definition from your textbook, then ask: what would break if this idea did not exist?\n\nStrong understanding means you can explain it simply, give an example, and spot when it applies.`,
+          fundamental: `${title} is a building block — master the definition before the details.`,
+          visual: {
+            type: 'diagram',
+            title: `${title} at a glance`,
+            nodes: [
+              { id: 'a', label: 'Definition' },
+              { id: 'b', label: 'Key idea' },
+              { id: 'c', label: 'Example' },
+            ],
+            edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }],
+          },
+        },
+        {
+          id: 'concept-2',
+          title: 'How the pieces fit',
+          hook: 'Ideas make more sense when you see how they link together.',
+          explanation: `The concepts in ${title} are not isolated facts. Each one supports the next. When you read, pause after each paragraph and ask: how does this connect to what I already know?\n\nUse the official textbook alongside this lesson for the full depth your board expects.`,
+          fundamental: 'Learning is connecting new ideas to ones you already understand.',
+          visual: {
+            type: 'animation',
+            title: 'Building understanding',
+            frames: [
+              { title: 'Define', description: 'Learn the term and what it means', highlight: 'Start here' },
+              { title: 'Connect', description: 'Link to prior chapters and daily life', highlight: 'Make it real' },
+              { title: 'Apply', description: 'Try an example in your own words', highlight: 'You own it now' },
+            ],
+          },
+        },
+      ],
+      recap: [
+        `You reviewed the fundamentals of ${title}`,
+        'Re-read tricky parts in the official textbook',
+        'Move to practice when the ideas feel clear',
       ],
     };
   }

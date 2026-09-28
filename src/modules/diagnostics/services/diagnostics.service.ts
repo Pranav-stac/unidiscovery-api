@@ -538,7 +538,7 @@ export class DiagnosticsService {
       const textIssue = validateSingleTextAnswer(step, answer);
       if (textIssue) {
         throw new BadRequestException({
-          message: textIssue.message,
+          message: textIssue.issues[0] ?? textIssue.message,
           code: textIssue.code,
           issues: textIssue.issues,
         });
@@ -739,7 +739,7 @@ export class DiagnosticsService {
       message: string;
       issues: string[];
     }>({
-      systemPrompt: `You are a quality gate for UniDiscover's student career diagnostic. Decide if answers are genuine enough to produce meaningful insights.
+      systemPrompt: `You are a quality gate for UniDiscovery's student career diagnostic. Decide if answers are genuine enough to produce meaningful insights.
 
 Mark valid=false when:
 - Open-text answers are gibberish, placeholders (asdf, test, idk), or clearly not engaged
@@ -792,7 +792,7 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
       strengths: report.strengths?.map((s) => this.sanitizeText(s)),
       interests: report.interests?.map((s) => this.sanitizeText(s)),
       recommendedDirections: report.recommendedDirections?.map((s) => this.sanitizeText(s)),
-      profileInsights: undefined,
+      profileInsights: report.profileInsights?.map((s) => this.sanitizeText(s)),
       careerMatches: report.careerMatches?.map((s) => this.sanitizeText(s)),
       skillGaps: report.skillGaps?.map((s) => this.sanitizeText(s)),
       actionPlan: report.actionPlan?.map((s) => this.sanitizeText(s)),
@@ -835,20 +835,21 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
 
     return this.sanitizeReport(
       await this.geminiService.generateStructured<DiagnosticReport>({
-        systemPrompt: `You are an expert student career advisor for UniDiscover. Generate a diagnostic report using ONLY the student's quiz answers. Do not reference profile, transcript, resume, school name, or any data outside the answers object.`,
+        systemPrompt: `You are an expert student career advisor for UniDiscovery. Generate a detailed, specific diagnostic report using ONLY the student's quiz answers. Write in clear, encouraging language. Each list item should be a full sentence with concrete detail — not a single word or vague label. Do not reference profile, transcript, resume, school name, or any data outside the answers object.`,
         userPrompt: JSON.stringify({ answers }),
         schemaDescription: `{
-        "headline": "string — clear title based on answers",
-        "summary": "string — 3-4 sentences from answers only",
-        "strengths": ["string — 3-5 strengths inferred from answers"],
-        "interests": ["string — 3-5 interests inferred from answers"],
-        "learningStyle": "string",
-        "recommendedDirections": ["string — 3-4 career/education directions"],
-        "nextBestAction": "string — single clear next step",
-        "careerMatches": ["string — 4-6 career titles that fit"],
-        "collegeFit": "string — paragraph on college fit from answers",
-        "skillGaps": ["string — 2-4 areas to develop"],
-        "actionPlan": ["string — 4-5 concrete action steps in order"],
+        "headline": "string — specific, motivating title based on answers",
+        "summary": "string — 6-8 sentences synthesizing patterns across answers",
+        "strengths": ["string — 4-6 detailed strengths, each 1-2 sentences with evidence from answers"],
+        "interests": ["string — 4-6 detailed interests, each 1-2 sentences"],
+        "learningStyle": "string — 2-3 sentences describing how they learn best",
+        "recommendedDirections": ["string — 4-5 education/career directions with brief rationale each"],
+        "nextBestAction": "string — specific next step with why it matters",
+        "careerMatches": ["string — 5-7 career paths with one-line fit explanation each"],
+        "collegeFit": "string — 2-3 paragraphs on college/university fit from answers",
+        "skillGaps": ["string — 3-5 development areas, each with practical context"],
+        "actionPlan": ["string — 5-7 ordered action steps, each specific and actionable"],
+        "profileInsights": ["string — 3-5 deeper observations connecting answer patterns"],
         "fitScore": "number 0-100 — alignment inferred from answers"
       }`,
         fallback,

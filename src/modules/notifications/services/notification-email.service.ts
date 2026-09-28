@@ -32,7 +32,7 @@ export class NotificationEmailService {
   async send(input: { to: string; subject: string; html: string }) {
     const from =
       this.configService.get<string>('notifications.emailFrom') ??
-      'UniDiscover <noreply@unidiscovery.app>';
+      'UniDiscovery <noreply@unidiscovery.app>';
 
     if (!this.transporter) {
       if (this.configService.get('nodeEnv') === 'production') {

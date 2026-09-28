@@ -39,7 +39,7 @@ export class NotificationPersonalizerService {
           title: `${first}, your diagnostic profile is ready`,
           body: `We've mapped your strengths${user.stream ? ` in ${user.stream}` : ''} and interests. College matches and opportunities are now personalized for you.`,
           actionUrl: '/diagnostic',
-          emailSubject: `${first}, your UniDiscover diagnostic insights are ready`,
+          emailSubject: `${first}, your UniDiscovery diagnostic insights are ready`,
           emailHtml: this.emailWrap(
             first,
             `Your diagnostic is complete. We analyzed your academic context${user.board ? ` (${user.board})` : ''} and built a foundation for college shortlists, SAT prep, and opportunity matching.`,
@@ -52,7 +52,7 @@ export class NotificationPersonalizerService {
           title: `${first}, finish your diagnostic to unlock your plan`,
           body: 'College suite, opportunities, and personalized recommendations activate once Section 1 is complete. Your progress is saved.',
           actionUrl: '/diagnostic',
-          emailSubject: `Reminder: complete your UniDiscover diagnostic, ${first}`,
+          emailSubject: `Reminder: complete your UniDiscovery diagnostic, ${first}`,
           emailHtml: this.emailWrap(
             first,
             'You started your student profile but have not finished the diagnostic yet. It takes about 15 minutes and powers every recommendation on the platform.',
@@ -78,7 +78,7 @@ export class NotificationPersonalizerService {
           title: `Opportunity saved: ${payload.activityTitle ?? 'New item'}`,
           body: `${first}, we'll surface similar programs and deadline reminders in your activity planner.`,
           actionUrl: '/opportunities',
-          emailSubject: `Saved opportunity — ${payload.activityTitle ?? 'UniDiscover'}`,
+          emailSubject: `Saved opportunity — ${payload.activityTitle ?? 'UniDiscovery'}`,
           emailHtml: this.emailWrap(
             first,
             `You saved <strong>${payload.activityTitle ?? 'an opportunity'}</strong>. Add it to your activity planner to track deadlines and next steps.`,
@@ -129,11 +129,11 @@ export class NotificationPersonalizerService {
         };
       case NotificationEventType.WEEKLY_DIGEST:
         return {
-          title: `${first}, your weekly UniDiscover digest`,
+          title: `${first}, your weekly UniDiscovery digest`,
           body: (payload.digestBody as string) ??
             `This week: ${user.collegesSaved ?? 0} colleges saved · ${user.activitiesSaved ?? 0} opportunities · ${user.tutoringAttempts ?? 0} SAT questions practiced.`,
           actionUrl: '/dashboard',
-          emailSubject: `Your weekly UniDiscover summary`,
+          emailSubject: `Your weekly UniDiscovery summary`,
           emailHtml: this.emailWrap(
             first,
             (payload.digestBody as string) ??
@@ -157,7 +157,7 @@ export class NotificationPersonalizerService {
         };
       default:
         return {
-          title: (payload.title as string) ?? 'UniDiscover update',
+          title: (payload.title as string) ?? 'UniDiscovery update',
           body: (payload.body as string) ?? `Hi ${first}, you have a new update on your student workspace.`,
           actionUrl: (payload.actionUrl as string) ?? '/dashboard',
         };
@@ -200,13 +200,13 @@ export class NotificationPersonalizerService {
     const href = `${appUrl}${actionPath}`;
     return `
       <div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;color:#181817">
-        <p style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#ff6b4a">UniDiscover</p>
+        <p style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#ff6b4a">UniDiscovery</p>
         <h1 style="font-size:24px;margin:16px 0">Hi ${firstName},</h1>
         <div style="font-size:15px;line-height:1.7;color:#5e5c56">${bodyHtml}</div>
         <p style="margin-top:28px">
           <a href="${href}" style="display:inline-block;background:#261d43;color:#fff;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:bold;font-size:14px">${ctaLabel}</a>
         </p>
-        <p style="margin-top:32px;font-size:12px;color:#9a9890">You're receiving this because notifications are enabled on your UniDiscover account.</p>
+        <p style="margin-top:32px;font-size:12px;color:#9a9890">You're receiving this because notifications are enabled on your UniDiscovery account.</p>
       </div>`;
   }
 }

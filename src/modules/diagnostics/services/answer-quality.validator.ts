@@ -43,9 +43,6 @@ const PLACEHOLDER_TOKENS = new Set([
   'lorem',
   'ipsum',
   'fdsa',
-  'something',
-  'anything',
-  'nothing',
   'gibberish',
   'gibberishh',
   'nonsense',
@@ -55,8 +52,6 @@ const PLACEHOLDER_TOKENS = new Set([
   'filler',
   'noidea',
   'dontknow',
-  "don't",
-  'know',
   'aaa',
   'bbb',
   'xxx',
@@ -99,17 +94,25 @@ const PLACEHOLDER_PATTERNS = [
   /^-+$/,
 ];
 
-const LOW_EFFORT_PHRASES = [
+const LOW_EFFORT_ONLY_ANSWERS = new Set([
   'gibberish',
   'nonsense',
   'no idea',
   "don't know",
   'dont know',
+  'idk',
+  'dunno',
   'just typing',
   'random text',
   'placeholder',
   'lorem ipsum',
-];
+  'asdf',
+  'test',
+  'skip',
+  'n/a',
+  'na',
+  'none',
+]);
 
 const KEYBOARD_MASH =
   /^(asdfgh|qwerty|zxcvbn|qazwsx|poiuyt|lkjhgf|mnbvcx|yuiop|hjkl;|bnm,.)+$/i;
@@ -168,11 +171,8 @@ export function isGibberishText(
 
   const lower = text.toLowerCase();
 
-  if (LOW_EFFORT_PHRASES.some((phrase) => lower.includes(phrase))) {
-    return true;
-  }
-
-  if (PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(lower))) {
+  const normalizedAnswer = lower.replace(/[^\w\s']/g, '').trim();
+  if (LOW_EFFORT_ONLY_ANSWERS.has(normalizedAnswer)) {
     return true;
   }
 
@@ -194,7 +194,7 @@ export function isGibberishText(
     return true;
   }
 
-  if (compact.length > 12) {
+  if (compact.length > 12 && compact.length <= 48) {
     const unique = new Set(compact).size;
     if (unique / compact.length < 0.22) {
       return true;
@@ -203,6 +203,10 @@ export function isGibberishText(
 
   const words = tokenize(text);
   if (words.length === 0) return true;
+
+  if (words.length <= 2 && PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(lower))) {
+    return true;
+  }
 
   if (words.length === 1 && words[0].length > 8 && !/[aeiou]/i.test(words[0])) {
     return true;
@@ -215,11 +219,10 @@ export function isGibberishText(
     }
 
     const placeholderWordCount = words.filter(isPlaceholderToken).length;
-    if (placeholderWordCount / words.length >= 0.5) {
+    if (words.length <= 4 && placeholderWordCount / words.length >= 0.5) {
       return true;
     }
-
-    if (words.length >= 3 && uniqueWords.size / words.length < 0.34) {
+    if (words.length > 4 && placeholderWordCount / words.length >= 0.7) {
       return true;
     }
   }
@@ -242,7 +245,7 @@ function validateTextAnswer(
     if (aptitude) {
       return `"${step.title}" looks incomplete or random — aptitude answers need a real attempt.`;
     }
-    return `"${step.title}" needs a thoughtful answer, not placeholder text.`;
+    return `"${step.title}" needs a bit more detail — please write at least one full sentence in your own words.`;
   }
 
   if (!aptitude && answer.trim().split(/\s+/).length < 2 && answer.trim().length < 12) {
@@ -337,7 +340,7 @@ export function validateDiagnosticAnswers(
   ).length;
 
   const coverage = answeredCount / questionSteps.length;
-  if (coverage < 0.85) {
+  if (coverage < 0.8) {
     issues.push(
       `Only ${answeredCount} of ${questionSteps.length} questions were answered.`,
     );
@@ -375,6 +378,7 @@ export function validateDiagnosticAnswers(
 
   const hasGibberish = issues.some(
     (issue) =>
+      issue.includes('more detail') ||
       issue.includes('placeholder') ||
       issue.includes('random') ||
       issue.includes('incomplete') ||
@@ -383,7 +387,7 @@ export function validateDiagnosticAnswers(
   );
 
   const code: AnswerQualityCode =
-    coverage < 0.85
+    coverage < 0.8
       ? 'INSUFFICIENT_ANSWERS'
       : hasGibberish
         ? 'GIBBERISH_DETECTED'

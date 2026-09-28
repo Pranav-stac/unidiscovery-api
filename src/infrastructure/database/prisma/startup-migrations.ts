@@ -100,9 +100,27 @@ async function ensurePlannerSchema(prisma: PrismaClient, logger: Logger) {
   }
 }
 
+async function ensureHomeschoolInteractiveSchema(prisma: PrismaClient, logger: Logger) {
+  await runStatement(
+    prisma,
+    logger,
+    'homeschool_progress.interactive_done',
+    `ALTER TABLE homeschool_progress
+     ADD COLUMN IF NOT EXISTS interactive_done BOOLEAN NOT NULL DEFAULT false;`,
+  );
+  await runStatement(
+    prisma,
+    logger,
+    'homeschool_progress.interactive_cache',
+    `ALTER TABLE homeschool_progress
+     ADD COLUMN IF NOT EXISTS interactive_cache JSONB;`,
+  );
+}
+
 export async function applyStartupMigrations(
   prisma: PrismaClient,
   logger: Logger,
 ): Promise<void> {
   await ensurePlannerSchema(prisma, logger);
+  await ensureHomeschoolInteractiveSchema(prisma, logger);
 }

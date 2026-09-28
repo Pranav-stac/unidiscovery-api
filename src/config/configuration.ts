@@ -117,7 +117,7 @@ export default () => ({
     smtpUser: trimEnv(process.env.SMTP_USER) ?? '',
     smtpPass: trimEnv(process.env.SMTP_PASS) ?? '',
     smtpSecure: ['1', 'true', 'yes'].includes((process.env.SMTP_SECURE ?? '').toLowerCase()),
-    emailFrom: trimEnv(process.env.NOTIFICATIONS_EMAIL_FROM) ?? 'UniDiscover <noreply@unidiscovery.app>',
+    emailFrom: trimEnv(process.env.NOTIFICATIONS_EMAIL_FROM) ?? 'UniDiscovery <noreply@unidiscovery.app>',
     appWebUrl: trimEnv(process.env.APP_WEB_URL) ?? 'http://localhost:3200',
   },
 });

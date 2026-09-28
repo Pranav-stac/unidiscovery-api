@@ -773,17 +773,19 @@ model UCASApplication {
 }
 
 model HomeschoolProgress {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  unitId        String   @map("unit_id")
-  learnDone     Boolean  @default(false) @map("learn_done")
-  practiceScore Int?     @map("practice_score")
-  testScore     Int?     @map("test_score")
-  mastered      Boolean  @default(false)
-  lessonCache   Json?    @map("lesson_cache")
-  practiceCache Json?    @map("practice_cache")
-  testCache     Json?    @map("test_cache")
-  chatHistory   Json     @default("[]") @map("chat_history")
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  unitId           String   @map("unit_id")
+  learnDone        Boolean  @default(false) @map("learn_done")
+  interactiveDone  Boolean  @default(false) @map("interactive_done")
+  practiceScore    Int?     @map("practice_score")
+  testScore        Int?     @map("test_score")
+  mastered         Boolean  @default(false)
+  lessonCache      Json?    @map("lesson_cache")
+  interactiveCache Json?    @map("interactive_cache")
+  practiceCache    Json?    @map("practice_cache")
+  testCache        Json?    @map("test_cache")
+  chatHistory      Json     @default("[]") @map("chat_history")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
