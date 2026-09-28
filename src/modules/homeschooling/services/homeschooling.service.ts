@@ -373,7 +373,7 @@ export class HomeschoolingService {
       subjectId: context.subject.id,
       subjectName: context.subject.name,
     });
-    const interactive = await this.geminiService.generateStructured<InteractiveLearningContent>({
+    const generated = await this.geminiService.generateStructured<InteractiveLearningContent>({
       systemPrompt: subjectPrompt,
       userPrompt: JSON.stringify({
         board: context.boardLabel,
@@ -397,6 +397,7 @@ export class HomeschoolingService {
       schemaDescription: INTERACTIVE_SCHEMA_DESCRIPTION,
       fallback: this.fallbackInteractive(context),
     });
+    const interactive = this.normalizeInteractiveContent(generated);
     await this.prisma.homeschoolProgress.update({
       where: { userId_unitId: { userId, unitId } },
       data: { interactiveCache: interactive as object },
@@ -1337,10 +1338,201 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     };
   }
 
+  private toList(value: unknown): unknown[] {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') return Object.values(value as Record<string, unknown>);
+    return [];
+  }
+
+  private asStringArray(value: unknown): string[] {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+    return this.toList(value)
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean);
+  }
+
+  private normalizeChartData(value: unknown): InteractiveVisual['data'] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const row = item as Record<string, unknown>;
+          const label = String(row.label ?? row.name ?? row.x ?? '').trim();
+          const numeric = Number(row.value ?? row.y ?? row.count);
+          if (!label || Number.isNaN(numeric)) return null;
+          return {
+            label,
+            value: numeric,
+            color: typeof row.color === 'string' ? row.color : undefined,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if (Array.isArray(record.labels) && Array.isArray(record.values)) {
+        return record.labels
+          .map((label, index) => ({
+            label: String(label ?? '').trim(),
+            value: Number(record.values?.[index] ?? 0),
+          }))
+          .filter((row) => row.label && !Number.isNaN(row.value));
+      }
+    }
+    return [];
+  }
+
+  private normalizeVisual(visual: unknown): InteractiveVisual | undefined {
+    if (!visual || typeof visual !== 'object') return undefined;
+    const raw = visual as Record<string, unknown>;
+    const type = String(raw.type ?? '');
+    const allowed = new Set([
+      'bar-chart',
+      'line-graph',
+      'pie',
+      'diagram',
+      'animation',
+      'comparison',
+      'timeline',
+    ]);
+    if (!allowed.has(type)) return undefined;
+
+    const normalized: InteractiveVisual = {
+      type: type as InteractiveVisual['type'],
+      title: typeof raw.title === 'string' ? raw.title : undefined,
+      caption: typeof raw.caption === 'string' ? raw.caption : undefined,
+    };
+
+    if (raw.data !== undefined) normalized.data = this.normalizeChartData(raw.data);
+
+    const nodes = this.toList(raw.nodes)
+      .map((node) => {
+        if (!node || typeof node !== 'object') return null;
+        const row = node as Record<string, unknown>;
+        const id = String(row.id ?? row.label ?? '').trim();
+        const label = String(row.label ?? row.id ?? '').trim();
+        if (!id || !label) return null;
+        return { id, label };
+      })
+      .filter((node): node is { id: string; label: string } => Boolean(node));
+    if (nodes.length) normalized.nodes = nodes;
+
+    const edges = this.toList(raw.edges)
+      .map((edge) => {
+        if (!edge || typeof edge !== 'object') return null;
+        const row = edge as Record<string, unknown>;
+        const from = String(row.from ?? row.source ?? '').trim();
+        const to = String(row.to ?? row.target ?? '').trim();
+        if (!from || !to) return null;
+        return {
+          from,
+          to,
+          label: typeof row.label === 'string' ? row.label : undefined,
+        };
+      })
+      .filter((edge): edge is { from: string; to: string; label?: string } => Boolean(edge));
+    if (edges.length) normalized.edges = edges;
+
+    const frames = this.toList(raw.frames)
+      .map((frame) => {
+        if (!frame || typeof frame !== 'object') return null;
+        const row = frame as Record<string, unknown>;
+        const title = String(row.title ?? '').trim();
+        const description = String(row.description ?? row.body ?? '').trim();
+        if (!title || !description) return null;
+        return {
+          title,
+          description,
+          highlight: typeof row.highlight === 'string' ? row.highlight : undefined,
+        };
+      })
+      .filter(
+        (frame): frame is { title: string; description: string; highlight?: string } =>
+          Boolean(frame),
+      );
+    if (frames.length) normalized.frames = frames;
+
+    const normalizeSide = (side: unknown) => {
+      if (!side || typeof side !== 'object') return undefined;
+      const row = side as Record<string, unknown>;
+      const title = String(row.title ?? '').trim();
+      const points = this.asStringArray(row.points);
+      if (!title || !points.length) return undefined;
+      return { title, points };
+    };
+
+    const left = normalizeSide(raw.left);
+    const right = normalizeSide(raw.right);
+    if (left) normalized.left = left;
+    if (right) normalized.right = right;
+
+    const events = this.toList(raw.events)
+      .map((event) => {
+        if (!event || typeof event !== 'object') return null;
+        const row = event as Record<string, unknown>;
+        const year = String(row.year ?? row.date ?? '').trim();
+        const title = String(row.title ?? '').trim();
+        const description = String(row.description ?? row.detail ?? '').trim();
+        if (!year || !title || !description) return null;
+        return { year, title, description };
+      })
+      .filter(
+        (event): event is { year: string; title: string; description: string } => Boolean(event),
+      );
+    if (events.length) normalized.events = events;
+
+    return normalized;
+  }
+
+  private normalizeExplore(value: unknown): InteractiveExplore | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const explore = value as Record<string, unknown>;
+    const items = this.toList(explore.items)
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const row = item as Record<string, unknown>;
+        const label = String(row.label ?? row.title ?? '').trim();
+        const detail = String(row.detail ?? row.description ?? row.content ?? '').trim();
+        if (!label || !detail) return null;
+        return { label, detail };
+      })
+      .filter((item): item is { label: string; detail: string } => Boolean(item));
+
+    if (!items.length) return undefined;
+    return {
+      prompt: String(explore.prompt ?? 'Tap to explore'),
+      items,
+    };
+  }
+
+  private normalizeConcept(raw: unknown, index: number): InteractiveConcept | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const concept = raw as Record<string, unknown>;
+    const title = String(concept.title ?? `Concept ${index + 1}`).trim();
+    const explanation = String(concept.explanation ?? concept.content ?? '').trim();
+    if (!title || !explanation) return null;
+
+    return {
+      id: String(concept.id ?? `concept-${index + 1}`),
+      title,
+      hook: String(concept.hook ?? concept.callToAction ?? title).trim(),
+      explanation,
+      fundamental: String(
+        concept.fundamental ?? concept.explanation ?? `Core idea: ${title}`,
+      ).trim(),
+      visual: this.normalizeVisual(concept.visual),
+      explore: this.normalizeExplore(concept.explore),
+    };
+  }
+
   private normalizeInteractiveContent(raw: unknown): InteractiveLearningContent {
     const data = raw as InteractiveLearningContent & {
       overview?: string;
-      topicsCovered?: string[];
+      topicsCovered?: unknown;
       steps?: Array<{
         id: string;
         title: string;
@@ -1349,28 +1541,37 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
         explanation?: string;
         visual?: InteractiveVisual;
       }>;
+      fundamentals?: unknown;
+      concepts?: unknown;
+      recap?: unknown;
     };
-    if (data.concepts?.length) return data;
-    if (data.steps?.length) {
-      return {
-        title: data.title,
-        subtitle: data.subtitle,
-        opening: data.opening ?? data.overview ?? '',
-        estimatedMinutes: data.estimatedMinutes ?? 15,
-        subjectFocus: data.subjectFocus ?? 'Interactive learning',
-        fundamentals: data.fundamentals ?? data.topicsCovered ?? [],
-        concepts: data.steps.map((step) => ({
-          id: step.id,
-          title: step.title,
-          hook: step.callToAction ?? step.title,
-          explanation: step.content,
-          fundamental: step.explanation ?? `Core idea: ${step.title}`,
-          visual: step.visual,
-        })),
-        recap: data.recap ?? [],
-      };
+
+    let conceptsSource: unknown = data.concepts;
+    if (!this.toList(data.concepts).length && this.toList(data.steps).length) {
+      conceptsSource = data.steps!.map((step, index) => ({
+        id: step.id ?? `concept-${index + 1}`,
+        title: step.title,
+        hook: step.callToAction ?? step.title,
+        explanation: step.content,
+        fundamental: step.explanation ?? `Core idea: ${step.title}`,
+        visual: step.visual,
+      }));
     }
-    return data;
+
+    const concepts = this.toList(conceptsSource)
+      .map((concept, index) => this.normalizeConcept(concept, index))
+      .filter((concept): concept is InteractiveConcept => Boolean(concept));
+
+    return {
+      title: String(data.title ?? 'Interactive lesson'),
+      subtitle: String(data.subtitle ?? ''),
+      opening: String(data.opening ?? data.overview ?? ''),
+      estimatedMinutes: Number(data.estimatedMinutes) > 0 ? Number(data.estimatedMinutes) : 15,
+      subjectFocus: String(data.subjectFocus ?? 'Interactive learning'),
+      fundamentals: this.asStringArray(data.fundamentals ?? data.topicsCovered),
+      concepts,
+      recap: this.asStringArray(data.recap),
+    };
   }
 
   private fallbackInteractive(
