@@ -1424,33 +1424,32 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     if (nodes.length) normalized.nodes = nodes;
 
     const edges = this.toList(raw.edges)
-      .map((edge) => {
+      .map((edge): { from: string; to: string; label?: string } | null => {
         if (!edge || typeof edge !== 'object') return null;
         const row = edge as Record<string, unknown>;
         const from = String(row.from ?? row.source ?? '').trim();
         const to = String(row.to ?? row.target ?? '').trim();
         if (!from || !to) return null;
-        return {
-          from,
-          to,
-          label: typeof row.label === 'string' ? row.label : undefined,
-        };
+        const edgeObj: { from: string; to: string; label?: string } = { from, to };
+        if (typeof row.label === 'string') edgeObj.label = row.label;
+        return edgeObj;
       })
       .filter((edge): edge is { from: string; to: string; label?: string } => Boolean(edge));
     if (edges.length) normalized.edges = edges;
 
     const frames = this.toList(raw.frames)
-      .map((frame) => {
+      .map((frame): { title: string; description: string; highlight?: string } | null => {
         if (!frame || typeof frame !== 'object') return null;
         const row = frame as Record<string, unknown>;
         const title = String(row.title ?? '').trim();
         const description = String(row.description ?? row.body ?? '').trim();
         if (!title || !description) return null;
-        return {
+        const frameObj: { title: string; description: string; highlight?: string } = {
           title,
           description,
-          highlight: typeof row.highlight === 'string' ? row.highlight : undefined,
         };
+        if (typeof row.highlight === 'string') frameObj.highlight = row.highlight;
+        return frameObj;
       })
       .filter(
         (frame): frame is { title: string; description: string; highlight?: string } =>

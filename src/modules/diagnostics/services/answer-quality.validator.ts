@@ -170,59 +170,134 @@ export function isGibberishText(
   if (text.length < minLength) return true;
 
   const lower = text.toLowerCase();
-
+  const compact = lower.replace(/\s+/g, '');
   const normalizedAnswer = lower.replace(/[^\w\s']/g, '').trim();
-  if (LOW_EFFORT_ONLY_ANSWERS.has(normalizedAnswer)) {
+
+  // 1. Direct match on low effort answers
+  if (LOW_EFFORT_ONLY_ANSWERS.has(normalizedAnswer) || PLACEHOLDER_TOKENS.has(normalizedAnswer)) {
     return true;
   }
 
-  if (KEYBOARD_MASH.test(lower.replace(/\s/g, ''))) {
+  // 2. Pattern matching on placeholders
+  if (PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(lower) || pattern.test(normalizedAnswer))) {
     return true;
   }
 
-  const compact = lower.replace(/\s/g, '');
-  if (/^(.)\1{4,}$/.test(compact)) {
+  // 3. Known keyboard mashing patterns
+  if (KEYBOARD_MASH.test(compact)) {
     return true;
   }
 
+  // Common random mash substrings
+  const mashSubstrings = [
+    'asdf', 'fdsa', 'qwer', 'rewq', 'zxcv', 'vcxz', 'hjkl', 'lkjh',
+    'poiuy', 'yuiop', 'mnbv', 'vbnm', 'qazw', 'wsxe', 'edcr', 'rfvt',
+    'tgb', 'yhn', 'ujm', 'ik,', 'ol.', 'p;/', '1234', '5678', '9012'
+  ];
+  let mashHits = 0;
+  for (const m of mashSubstrings) {
+    if (compact.includes(m)) mashHits += 1;
+  }
+  if (mashHits >= 2 || (compact.length <= 16 && mashHits >= 1 && compact.length >= 6 && !compact.includes(' '))) {
+    return true;
+  }
+
+  // 4. Repeated identical characters (e.g., aaaaa, 11111, ....., ????)
+  if (/(.)\1{3,}/.test(compact)) {
+    return true;
+  }
+
+  // 5. Short repeating substrings (e.g. abababa, asdasd, lololo, xyzxyz)
+  if (/^(.{2,4})\1{2,}$/.test(compact)) {
+    return true;
+  }
+
+  // 6. Alpha checks & vowel distribution
   const alpha = lower.replace(/[^a-z]/gi, '');
   if (alpha.length === 0) {
     return !options.allowNumeric;
   }
 
-  if (alpha.length > 6 && !/[aeiou]/i.test(alpha)) {
-    return true;
-  }
+  // If mostly alphabetic, check consonant clusters and vowel ratios
+  if (alpha.length >= 4) {
+    const vowels = alpha.match(/[aeiou]/g) || [];
+    const vowelRatio = vowels.length / alpha.length;
 
-  if (compact.length > 12 && compact.length <= 48) {
-    const unique = new Set(compact).size;
-    if (unique / compact.length < 0.22) {
+    // Zero vowels in words > 4 chars is almost always gibberish (unless standard acronyms)
+    if (alpha.length >= 5 && vowels.length === 0) {
+      return true;
+    }
+
+    // Unnatural vowel ratio (less than 13% vowels in a word of 7+ chars)
+    if (alpha.length >= 7 && vowelRatio < 0.14) {
+      return true;
+    }
+
+    // More than 5 consecutive consonants in English is gibberish
+    if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(alpha)) {
+      return true;
+    }
+
+    // Consecutive identical vowels (e.g., aaaaa, eeeee)
+    if (/[aeiou]{4,}/i.test(alpha)) {
       return true;
     }
   }
 
+  // 7. Character entropy / uniqueness ratio
+  if (compact.length >= 8) {
+    const uniqueChars = new Set(compact).size;
+    const uniquenessRatio = uniqueChars / compact.length;
+    if (compact.length >= 10 && uniquenessRatio < 0.32) {
+      return true;
+    }
+    if (compact.length >= 20 && uniquenessRatio < 0.28) {
+      return true;
+    }
+  }
+
+  // 8. Word-level token inspection
   const words = tokenize(text);
   if (words.length === 0) return true;
 
-  if (words.length <= 2 && PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(lower))) {
-    return true;
+  // Single word checks
+  if (words.length === 1) {
+    const w = words[0];
+    if (w.length >= 6 && !/[aeiou]/i.test(w)) return true;
+    if (PLACEHOLDER_TOKENS.has(w) || PLACEHOLDER_PATTERNS.some((p) => p.test(w))) return true;
+    if (/(.)\1{2,}/.test(w)) return true;
+    if (w.length >= 12 && new Set(w).size / w.length < 0.35) return true;
   }
 
-  if (words.length === 1 && words[0].length > 8 && !/[aeiou]/i.test(words[0])) {
-    return true;
-  }
-
+  // Multi-word checks
   if (words.length >= 2) {
     const uniqueWords = new Set(words);
+    // All words identical
     if (uniqueWords.size === 1) {
       return true;
     }
 
-    const placeholderWordCount = words.filter(isPlaceholderToken).length;
-    if (words.length <= 4 && placeholderWordCount / words.length >= 0.5) {
+    const placeholderCount = words.filter(isPlaceholderToken).length;
+    if (placeholderCount / words.length >= 0.4) {
       return true;
     }
-    if (words.length > 4 && placeholderWordCount / words.length >= 0.7) {
+
+    // Count words that are individually gibberish
+    const gibberishWordCount = words.filter((w) => {
+      if (w.length <= 2) return false;
+      const wVowels = w.match(/[aeiou]/g)?.length ?? 0;
+      if (w.length >= 5 && wVowels === 0) return true;
+      if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(w)) return true;
+      if (/(.)\1{3,}/.test(w)) return true;
+      if (w.length >= 8 && new Set(w).size / w.length < 0.35) return true;
+      return false;
+    }).length;
+
+    if (gibberishWordCount / words.length >= 0.4) {
+      return true;
+    }
+
+    if (words.length >= 4 && uniqueWords.size / words.length < 0.35) {
       return true;
     }
   }
