@@ -61,19 +61,35 @@ export class AuthService implements OnModuleInit {
     if (existing) {
       if (existing.role === UserRole.ADMIN) {
         await this.usersRepository.updatePassword(existing.id, passwordHash);
+        await this.ensureAdminProfile(existing.id);
         this.logger.log(`Synced admin credentials for: ${email}`);
       }
       return;
     }
 
-    await this.usersRepository.create({
+    const user = await this.usersRepository.create({
       email,
       name,
       passwordHash,
       role: UserRole.ADMIN,
     });
+    await this.ensureAdminProfile(user.id);
 
     this.logger.log(`Seeded admin user: ${email}`);
+  }
+
+  private async ensureAdminProfile(userId: string): Promise<void> {
+    let profile = await this.profilesRepository.findByUserId(userId);
+    if (!profile) {
+      profile = await this.profilesRepository.createForUser(userId);
+    }
+    if (!profile.onboardingCompleted || !profile.diagnosticCompleted) {
+      await this.profilesRepository.update(userId, {
+        onboardingCompleted: true,
+        diagnosticCompleted: true,
+        onboardingStep: 99,
+      });
+    }
   }
 
   async register(dto: RegisterDto): Promise<AuthResponse> {

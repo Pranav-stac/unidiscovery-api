@@ -47,7 +47,7 @@ export class AssistantService {
 
 User question: ${message}
 
-Respond as the AI Discovery assistant:`;
+Respond as the YUDI.AI assistant:`;
 
     const reply = await this.geminiService.generateText(prompt);
 

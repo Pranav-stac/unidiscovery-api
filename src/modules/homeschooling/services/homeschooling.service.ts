@@ -15,6 +15,8 @@ import {
   normalizeBoard,
   normalizeGrade,
   normalizeStream,
+  enrichSubjectTitles,
+  mergeOfficialMedia,
   officialPortal,
   officialSubject,
   slugify,
@@ -68,10 +70,19 @@ type LessonContent = {
 };
 
 type InteractiveVisual = {
-  type: 'bar-chart' | 'line-graph' | 'pie' | 'diagram' | 'animation' | 'comparison' | 'timeline';
+  type:
+    | 'bar-chart'
+    | 'line-graph'
+    | 'pie'
+    | 'diagram'
+    | 'animation'
+    | 'comparison'
+    | 'timeline'
+    | 'table';
   title?: string;
   caption?: string;
   data?: Array<{ label: string; value: number; color?: string }>;
+  table?: { headers: string[]; rows: string[][] };
   nodes?: Array<{ id: string; label: string }>;
   edges?: Array<{ from: string; to: string; label?: string }>;
   frames?: Array<{ title: string; description: string; highlight?: string }>;
@@ -1151,15 +1162,19 @@ This is an exam-style check — NOT practice. Rules:
 
     if (options.live !== false && board === 'nios' && !(cachedLive && isFreshSyllabus(dbRow?.updatedAt))) {
       const scraped = await this.officialMedia.loadSubject(board, grade, subjectId);
-      if (scraped) return scraped;
+      if (scraped) return enrichSubjectTitles(scraped, board, grade);
     }
-    if (cachedLive && cached) return cached;
 
     const official = officialSubject(board, grade, subjectId);
-    if (official) return official;
-    if (cached) return cached;
+    if (official) {
+      const merged = mergeOfficialMedia(official, cached);
+      return enrichSubjectTitles(merged, board, grade);
+    }
+
+    if (cachedLive && cached) return enrichSubjectTitles(cached, board, grade);
+    if (cached) return enrichSubjectTitles(cached, board, grade);
     if (!options.generate) {
-      return this.catalogFallback(board, grade, subjectId);
+      return enrichSubjectTitles(this.catalogFallback(board, grade, subjectId), board, grade);
     }
     const generated = await this.geminiService.generateStructured<{
       units: Array<{ chapter: number; title: string }>;
@@ -1189,12 +1204,13 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
         videoQuery: `${BOARD_LABELS[board]} Class ${grade} ${subjectName(subjectId)} ${unit.title}`,
       })),
     };
+    const enriched = enrichSubjectTitles(subject, board, grade);
     await this.prisma.homeschoolSyllabus.upsert({
       where: { cacheKey },
-      create: { cacheKey, board, grade, subject: subjectId, payload: subject as object },
-      update: { payload: subject as object },
+      create: { cacheKey, board, grade, subject: subjectId, payload: enriched as object },
+      update: { payload: enriched as object },
     });
-    return subject;
+    return enriched;
   }
 
   private async unitContext(userId: string, unitId: string) {
@@ -1388,10 +1404,72 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     return [];
   }
 
+  private static readonly CHART_VISUAL_TYPES = new Set<InteractiveVisual['type']>([
+    'bar-chart',
+    'line-graph',
+    'pie',
+  ]);
+
+  private static readonly HUMANITIES_SUBJECT_RE =
+    /english|literature|history|civics|hindi|grammar|writing|prose|poetry|fiction|drama|language arts|social studies/i;
+
+  private isVisualRenderable(visual: InteractiveVisual | undefined): boolean {
+    if (!visual?.type) return false;
+    switch (visual.type) {
+      case 'bar-chart':
+      case 'line-graph':
+      case 'pie':
+        return (visual.data?.length ?? 0) > 0;
+      case 'table':
+        return Boolean(visual.table?.headers?.length && visual.table.rows?.length);
+      case 'diagram':
+        return (visual.nodes?.length ?? 0) > 0;
+      case 'animation':
+        return (visual.frames?.length ?? 0) > 0;
+      case 'comparison':
+        return Boolean(visual.left?.points?.length && visual.right?.points?.length);
+      case 'timeline':
+        return (visual.events?.length ?? 0) > 0;
+      default:
+        return false;
+    }
+  }
+
+  private normalizeTable(value: unknown): InteractiveVisual['table'] | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const raw = value as Record<string, unknown>;
+    const headers = this.asStringArray(raw.headers ?? raw.columns);
+    const rows = this.toList(raw.rows)
+      .map((row) => {
+        if (Array.isArray(row)) {
+          return row.map((cell) => String(cell ?? '').trim());
+        }
+        if (row && typeof row === 'object') {
+          const record = row as Record<string, unknown>;
+          if (headers.length) {
+            return headers.map((header) => String(record[header] ?? '').trim());
+          }
+          return Object.values(record).map((cell) => String(cell ?? '').trim());
+        }
+        return [];
+      })
+      .filter((row) => row.length > 0);
+    if (!headers.length || !rows.length) return undefined;
+    return { headers, rows };
+  }
+
   private normalizeVisual(visual: unknown): InteractiveVisual | undefined {
     if (!visual || typeof visual !== 'object') return undefined;
     const raw = visual as Record<string, unknown>;
-    const type = String(raw.type ?? '');
+    const rawType = String(raw.type ?? '').trim().toLowerCase();
+    const aliases: Record<string, InteractiveVisual['type']> = {
+      bar: 'bar-chart',
+      chart: 'bar-chart',
+      line: 'line-graph',
+      graph: 'line-graph',
+      table: 'table',
+    };
+    const type = aliases[rawType] ?? (rawType as InteractiveVisual['type']);
     const allowed = new Set([
       'bar-chart',
       'line-graph',
@@ -1400,16 +1478,30 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
       'animation',
       'comparison',
       'timeline',
+      'table',
     ]);
     if (!allowed.has(type)) return undefined;
 
     const normalized: InteractiveVisual = {
-      type: type as InteractiveVisual['type'],
+      type,
       title: typeof raw.title === 'string' ? raw.title : undefined,
       caption: typeof raw.caption === 'string' ? raw.caption : undefined,
     };
 
-    if (raw.data !== undefined) normalized.data = this.normalizeChartData(raw.data);
+    if (type === 'table') {
+      const table = this.normalizeTable(raw.table ?? raw);
+      if (table) normalized.table = table;
+    } else if (raw.data !== undefined) {
+      normalized.data = this.normalizeChartData(raw.data);
+    }
+
+    if (!normalized.table && !normalized.data?.length && (rawType === 'table' || raw.headers || raw.columns)) {
+      const table = this.normalizeTable(raw.table ?? raw);
+      if (table) {
+        normalized.type = 'table';
+        normalized.table = table;
+      }
+    }
 
     const nodes = this.toList(raw.nodes)
       .map((node) => {
@@ -1486,6 +1578,17 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
       );
     if (events.length) normalized.events = events;
 
+    if (
+      HomeschoolingService.CHART_VISUAL_TYPES.has(normalized.type) &&
+      !(normalized.data?.length ?? 0) &&
+      normalized.left &&
+      normalized.right
+    ) {
+      normalized.type = 'comparison';
+      delete normalized.data;
+    }
+
+    if (!this.isVisualRenderable(normalized)) return undefined;
     return normalized;
   }
 
@@ -1510,12 +1613,27 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
     };
   }
 
-  private normalizeConcept(raw: unknown, index: number): InteractiveConcept | null {
+  private normalizeConcept(
+    raw: unknown,
+    index: number,
+    subjectFocus?: string,
+  ): InteractiveConcept | null {
     if (!raw || typeof raw !== 'object') return null;
     const concept = raw as Record<string, unknown>;
     const title = String(concept.title ?? `Concept ${index + 1}`).trim();
     const explanation = String(concept.explanation ?? concept.content ?? '').trim();
     if (!title || !explanation) return null;
+
+    let visual = this.normalizeVisual(concept.visual);
+    const humanities = HomeschoolingService.HUMANITIES_SUBJECT_RE.test(subjectFocus ?? '');
+    if (
+      visual &&
+      humanities &&
+      HomeschoolingService.CHART_VISUAL_TYPES.has(visual.type) &&
+      !(visual.data?.length ?? 0)
+    ) {
+      visual = undefined;
+    }
 
     return {
       id: String(concept.id ?? `concept-${index + 1}`),
@@ -1525,7 +1643,7 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
       fundamental: String(
         concept.fundamental ?? concept.explanation ?? `Core idea: ${title}`,
       ).trim(),
-      visual: this.normalizeVisual(concept.visual),
+      visual,
       explore: this.normalizeExplore(concept.explore),
     };
   }
@@ -1559,8 +1677,9 @@ Return real published chapter titles only, in syllabus order. 6 to 16 chapters.`
       }));
     }
 
+    const subjectFocus = String(data.subjectFocus ?? 'Interactive learning');
     const concepts = this.toList(conceptsSource)
-      .map((concept, index) => this.normalizeConcept(concept, index))
+      .map((concept, index) => this.normalizeConcept(concept, index, subjectFocus))
       .filter((concept): concept is InteractiveConcept => Boolean(concept));
 
     return {

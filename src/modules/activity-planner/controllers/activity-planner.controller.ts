@@ -127,6 +127,14 @@ export class ActivityPlannerController {
     return this.plannerService.addFromActivity(user.id, activityId);
   }
 
+  @Post('from-competition/:competitionId')
+  fromCompetition(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('competitionId') competitionId: string,
+  ) {
+    return this.plannerService.addFromCompetition(user.id, competitionId);
+  }
+
   @Post(':id/enrich')
   enrichTask(
     @CurrentUser() user: AuthenticatedUser,

@@ -324,6 +324,54 @@ export class ActivityPlannerService {
     });
   }
 
+  async addFromCompetition(userId: string, competitionId: string) {
+    const existing = await this.prisma.activityPlanItem.findFirst({
+      where: {
+        userId,
+        notes: { contains: `competitionId:${competitionId}` },
+      },
+    });
+    if (existing) {
+      const row = await this.prisma.activityPlanItem.findFirstOrThrow({
+        where: { id: existing.id },
+        include: { activity: true },
+      });
+      return this.enrich(row);
+    }
+
+    const competition = await this.prisma.competition.findUnique({
+      where: { id: competitionId },
+    });
+    if (!competition) throw new NotFoundException('Competition not found');
+
+    const deadline = competition.deadline ? new Date(competition.deadline) : null;
+    const validDeadline =
+      deadline && !Number.isNaN(deadline.getTime()) ? deadline : new Date();
+    const start = new Date(validDeadline);
+    start.setMonth(start.getMonth() - 1);
+
+    return this.create(userId, {
+      title: competition.title,
+      type: 'COMPETITION',
+      category: 'PROFILE',
+      subcategory: 'Competition',
+      startDate: start,
+      dueDate: validDeadline,
+      targetMonth: validDeadline.getMonth() + 1,
+      targetYear: validDeadline.getFullYear(),
+      description: competition.description ?? undefined,
+      notes: [
+        `competitionId:${competitionId}`,
+        competition.partner ? `Partner: ${competition.partner}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      whyItMatters: competition.url
+        ? `Register and prepare for this competition. Details: ${competition.url}`
+        : 'Build your profile with structured competition experience.',
+    });
+  }
+
   async addFromActivity(userId: string, activityId: string) {
     const existing = await this.prisma.activityPlanItem.findFirst({
       where: { userId, activityId },

@@ -61,7 +61,7 @@ const SUBJECT_PROMPTS: Record<string, SubjectPrompt> = {
   english: {
     focus: 'Meaning → technique → effect on reader → how to use it in writing/analysis.',
     visualGuidance:
-      'Use comparison for contrasting texts/styles, diagram for essay/story structure, timeline for plot or historical context.',
+      'Use comparison (left/right bullet points) for contrasting ideas, characters, or styles. Use diagram for story/essay structure, timeline for plot order. NEVER use bar-chart, line-graph, or pie unless the chapter has real numeric data to plot. Skip visual entirely if text alone is clearer.',
     teachingStyle:
       'Show short quoted examples. Explain tone, purpose, and audience. Teach close reading, not memorization.',
     exampleGuidance: 'Embed brief sample sentences or phrases demonstrating the literary device or grammar rule.',
@@ -120,6 +120,14 @@ export function subjectInteractivePrompt(subjectId: string, subjectName: string)
   return SUBJECT_PROMPTS[nameKey] ?? SUBJECT_PROMPTS.default;
 }
 
+const HUMANITIES_SUBJECT_KEYS = new Set(['english', 'history', 'literature', 'civics', 'hindi']);
+
+function isHumanitiesSubject(subjectId: string, subjectName: string): boolean {
+  const key = resolveSubjectPromptKey(subjectId);
+  const nameKey = resolveSubjectPromptKey(subjectName);
+  return HUMANITIES_SUBJECT_KEYS.has(key) || HUMANITIES_SUBJECT_KEYS.has(nameKey);
+}
+
 export function buildInteractiveSystemPrompt(input: {
   boardLabel: string;
   grade: number;
@@ -127,6 +135,15 @@ export function buildInteractiveSystemPrompt(input: {
   subjectName: string;
 }): string {
   const subject = subjectInteractivePrompt(input.subjectId, input.subjectName);
+  const humanities = isHumanitiesSubject(input.subjectId, input.subjectName);
+  const visualRules = humanities
+    ? `- Include a visual only when it genuinely clarifies the idea (2-4 concepts, not every block).
+- For qualitative contrasts use comparison with left/right points — NOT charts.
+- NEVER output bar-chart, line-graph, or pie without real numeric data arrays.
+- Prefer comparison, diagram, timeline, or animation. Omit visual if unnecessary.`
+    : `- At least 4 concepts MUST include a visual (bar-chart, line-graph, pie, diagram, animation, comparison, timeline, or table) with real meaningful data.
+- Use table for reference data (formulas, comparisons, properties). Use charts only for numeric trends.`;
+
   return `You are an expert ${input.boardLabel} Class ${input.grade} ${input.subjectName} tutor creating a CONTINUOUS interactive learning experience — NOT a step-by-step quiz or checklist.
 
 GOAL: Help the student deeply understand every fundamental concept in this chapter through clear explanations, visuals, and optional tap-to-explore interactions. It should read like an immersive lesson that flows naturally from one idea to the next.
@@ -138,12 +155,13 @@ SUBJECT-SPECIFIC APPROACH (${input.subjectName}):
 - Examples: ${subject.exampleGuidance}
 
 RULES:
-- Output 5-8 concept blocks that together cover the FULL chapter syllabus.
+- Output 6-9 concept blocks that together cover the FULL chapter syllabus — do not skip subtopics.
 - NO multiple-choice quizzes, fill-in-blank gates, or ordering tasks.
-- Each concept: hook (1 engaging sentence) + explanation (4-8 sentences, fundamental and clear) + fundamental (one-line principle to remember).
-- At least 4 concepts MUST include a visual (bar-chart, line-graph, pie, diagram, animation, comparison, or timeline) with real meaningful data.
-- 2-3 concepts may include explore: tap-to-reveal cards ({ prompt, items: [{ label, detail }] }) for deeper optional detail — never required to proceed.
-- Write opening as a warm 2-3 sentence intro. fundamentals: 3-5 chapter-wide core principles.
+- Each concept: hook (1 engaging sentence) + explanation (6-12 sentences: define terms, show a worked mini-example, connect to prior ideas, and state common mistakes) + fundamental (one-line principle to remember).
+${visualRules}
+- 3-4 concepts should include explore: tap-to-reveal cards ({ prompt, items: [{ label, detail }] }) with 2-4 items each for deeper optional detail — never required to proceed.
+- Write opening as a warm 3-4 sentence intro that previews what the student will master. fundamentals: 4-6 chapter-wide core principles.
+- recap: 5-8 bullet takeaways that tie concepts together.
 - Adapt depth to student skill gaps; use their interests in examples when provided.
 - Use concept-1, concept-2, etc. as ids.`;
 }
@@ -153,7 +171,7 @@ export const INTERACTIVE_SCHEMA_DESCRIPTION = `{
   fundamentals: string[],
   concepts: [{
     id, title, hook, explanation, fundamental,
-    visual?: { type, title?, caption?, data?, nodes?, edges?, frames?, left?, right?, events? },
+    visual?: { type, title?, caption?, data?, table?: { headers, rows }, nodes?, edges?, frames?, left?, right?, events? },
     explore?: { prompt, items: [{ label, detail }] }
   }],
   recap: string[]

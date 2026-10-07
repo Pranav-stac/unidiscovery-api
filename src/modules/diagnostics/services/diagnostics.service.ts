@@ -739,7 +739,7 @@ export class DiagnosticsService {
       message: string;
       issues: string[];
     }>({
-      systemPrompt: `You are a quality gate for UniDiscovery's student career diagnostic. Decide if answers are genuine enough to produce meaningful insights.
+      systemPrompt: `You are a quality gate for YUDI.AI's student career diagnostic. Decide if answers are genuine enough to produce meaningful insights.
 
 Mark valid=false when:
 - Open-text answers are gibberish, placeholders (asdf, test, idk), or clearly not engaged
@@ -835,7 +835,7 @@ When invalid, message must warmly ask the student to retake and answer thoughtfu
 
     return this.sanitizeReport(
       await this.geminiService.generateStructured<DiagnosticReport>({
-        systemPrompt: `You are an expert student career advisor for UniDiscovery. Generate a detailed, specific diagnostic report using ONLY the student's quiz answers. Write in clear, encouraging language. Each list item should be a full sentence with concrete detail — not a single word or vague label. Do not reference profile, transcript, resume, school name, or any data outside the answers object.`,
+        systemPrompt: `You are an expert student career advisor for YUDI.AI. Generate a detailed, specific diagnostic report using ONLY the student's quiz answers. Write in clear, encouraging language. Each list item should be a full sentence with concrete detail — not a single word or vague label. Do not reference profile, transcript, resume, school name, or any data outside the answers object.`,
         userPrompt: JSON.stringify({ answers }),
         schemaDescription: `{
         "headline": "string — specific, motivating title based on answers",

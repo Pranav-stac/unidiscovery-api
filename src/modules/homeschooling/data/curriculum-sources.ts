@@ -455,6 +455,29 @@ const NCERT_BOOKS: Record<string, BookEntry> = {
       'Consumer Rights',
     ],
   },
+  '10-english': {
+    titles: [
+      'A Letter to God',
+      'Nelson Mandela: Long Walk to Freedom',
+      'Two Stories about Flying',
+      'From the Diary of Anne Frank',
+      'Glimpses of India',
+      'Mijbil the Otter',
+      'Madam Rides the Bus',
+      'The Sermon at Benares',
+      'The Proposal',
+      'A Triumph of Surgery',
+      "The Thief's Story",
+      'The Midnight Visitor',
+      'A Question of Trust',
+      'Footprints without Feet',
+      'The Making of a Scientist',
+      'The Necklace',
+      'The Hack Driver',
+      'Bholi',
+      'The Book That Saved the Earth',
+    ],
+  },
   '11-mathematics': {
     code: 'kemh1',
     titles: [
@@ -1219,6 +1242,80 @@ export function defaultSubjectIds(
     .map(slugify)
     .filter((id) => id && isSchoolSubjectExtra(id));
   return [...new Set([...ids, ...extras])];
+}
+
+const GENERIC_CHAPTER_TITLE_RE =
+  /^(?:chapter|part|unit|lesson)\s*\d+$/i;
+
+export function isGenericChapterTitle(title: string, subjectName?: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return true;
+  if (GENERIC_CHAPTER_TITLE_RE.test(trimmed)) return true;
+  if (subjectName) {
+    const generic = new RegExp(
+      `^${subjectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[—-]\\s*(?:chapter|part|unit)\\s*\\d+$`,
+      'i',
+    );
+    if (generic.test(trimmed)) return true;
+  }
+  return false;
+}
+
+export function enrichSubjectTitles(
+  subject: OfficialSubject,
+  board: BoardKey,
+  grade: number,
+): OfficialSubject {
+  const official = officialSubject(board, grade, subject.id);
+  const officialByChapter = new Map(
+    (official?.units ?? []).map((unit) => [unit.chapter, unit.title.trim()]),
+  );
+  const label = subject.name || subjectName(subject.id);
+
+  const units = subject.units.map((unit) => {
+    const current = String(unit.title ?? '').trim();
+    const officialTitle = officialByChapter.get(unit.chapter);
+    const title =
+      officialTitle && (isGenericChapterTitle(current, label) || !current)
+        ? officialTitle
+        : current || officialTitle || `${label} — Chapter ${unit.chapter}`;
+    return { ...unit, title };
+  });
+
+  return { ...subject, units };
+}
+
+export function mergeOfficialMedia(
+  official: OfficialSubject,
+  cached?: OfficialSubject | null,
+): OfficialSubject {
+  if (!cached?.units?.length) return official;
+  const mediaByChapter = new Map(
+    cached.units.map((unit) => [
+      unit.chapter,
+      {
+        videoUrl: unit.videoUrl,
+        videos: unit.videos,
+        audios: unit.audios,
+        textbookUrl: unit.textbookUrl,
+      },
+    ]),
+  );
+
+  return {
+    ...official,
+    units: official.units.map((unit) => {
+      const media = mediaByChapter.get(unit.chapter);
+      if (!media) return unit;
+      return {
+        ...unit,
+        videoUrl: unit.videoUrl ?? media.videoUrl,
+        videos: unit.videos?.length ? unit.videos : media.videos,
+        audios: unit.audios?.length ? unit.audios : media.audios,
+        textbookUrl: unit.textbookUrl ?? media.textbookUrl,
+      };
+    }),
+  };
 }
 
 export function officialSubject(

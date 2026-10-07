@@ -352,24 +352,11 @@ export class TutoringService {
         .filter(([bankId]) => Boolean(bankId)),
     );
 
-    for (const item of SAT_AUTHORED_BANK) {
+    const missing = SAT_AUTHORED_BANK.filter((item) => !byBankId.has(item.bankId));
+    if (missing.length === 0) return;
+
+    for (const item of missing) {
       const metadata = satItemMetadata(item);
-      const foundId = byBankId.get(item.bankId);
-      if (foundId) {
-        await this.prisma.tutoringQuestion.update({
-          where: { id: foundId },
-          data: {
-            question: item.question,
-            options: item.options,
-            correctAnswer: item.correctAnswer,
-            explanation: item.explanation,
-            difficulty: item.difficulty,
-            isActive: true,
-            metadata,
-          },
-        });
-        continue;
-      }
       await this.prisma.tutoringQuestion.create({
         data: {
           testType: TutoringTestType.SAT,

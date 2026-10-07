@@ -254,6 +254,7 @@ export class ApplicationsService {
         res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
       }
 
+      content = this.humanizeDraftText(content);
       const document = await persist(content);
       res.write(
         `data: ${JSON.stringify({ done: true, document, action: meta?.action })}\n\n`,
@@ -351,13 +352,35 @@ export class ApplicationsService {
     );
   }
 
+  private humanizeDraftText(text: string): string {
+    return text
+      .replace(/\u2014/g, ', ')
+      .replace(/\u2013/g, ', ')
+      .replace(/\s+-\s+(?=[a-z])/gi, ', ')
+      .replace(/,\s*,+/g, ', ')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   private buildAgentToolsPreamble(): string {
-    return `You are an agentic application-writing assistant. You operate through tools:
+    return `You are an application-writing assistant. You operate through tools:
 - generate_document: write a new full draft from scratch
 - edit_document: revise the entire draft (search/replace sections, shorten, expand, change tone, add facts from context)
-- read_context: use only enabled student context — profile, resume, marksheets, diagnostic
+- read_context: use only enabled student context: profile, resume, marksheets, diagnostic
 
 Return ONLY the final document markdown in the canvas. No tool JSON, no preamble, no code fences.`;
+  }
+
+  private buildHumanVoiceRules(): string {
+    return `HUMAN VOICE RULES (follow strictly):
+- Write like a real student speaking honestly, not like AI or marketing copy.
+- Use simple, clear language. Mix short and medium sentences.
+- Do NOT use em dashes or en dashes. Use commas, periods, or "and" instead.
+- Avoid stock AI phrases such as: delve, tapestry, furthermore, moreover, additionally, in conclusion, it is worth noting, passionate about, excited to embark, transformative journey, multifaceted, leverage, utilize, robust, landscape.
+- Use contractions where they sound natural (I'm, I've, don't) in essays and personal statements.
+- Be specific with real details from context. Do not sound overly polished or generic.
+- Do not use semicolons unless writing a CV.`;
   }
 
   private buildAgentGeneratePrompt(
@@ -369,7 +392,7 @@ Return ONLY the final document markdown in the canvas. No tool JSON, no preamble
       prompt,
       targetCollege,
       targetCountry,
-      tone = 'authentic, first-person, specific',
+      tone = 'natural, conversational, student voice, specific and honest',
       wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       message,
       attachmentNames,
@@ -500,14 +523,16 @@ Apply the request using edit/search-replace logic on the draft. Return ONLY the 
       (profile.grade ? `Grade ${profile.grade}` : 'student');
 
     return `CRITICAL PERSONALIZATION RULES:
-1. Write ONE document only — never combine multiple essays, statements, or letter types in a single output.
-2. User instructions override default templates. If they ask for "Erasmus Mundus SOP", write ONLY that SOP — not a personal statement plus SOP.
+1. Write ONE document only. Never combine multiple essays, statements, or letter types in a single output.
+2. User instructions override default templates. If they ask for "Erasmus Mundus SOP", write ONLY that SOP, not a personal statement plus SOP.
 3. Cite specific facts from the student context: school, board, grades, subject scores, resume roles/projects, interests, strengths, diagnostic insights.
 4. Current academic level: ${level}. Match voice and achievements to this level unless the user explicitly requests graduate/professional application writing.
-5. When resume or uploaded documents exist, weave in concrete details (job titles, companies, projects, skills, grades) — never generic filler.
+5. When resume or uploaded documents exist, weave in concrete details (job titles, companies, projects, skills, grades). Never use generic filler.
 6. Do NOT invent achievements, awards, employers, or institutions not supported by the context.
-7. If resume describes professional experience but profile shows school-level grades, follow the user's instructions on which persona to use — default to instructions, then academic level.
-8. Respect the word limit strictly.`;
+7. If resume describes professional experience but profile shows school-level grades, follow the user's instructions on which persona to use. Default to instructions, then academic level.
+8. Respect the word limit strictly.
+
+${this.buildHumanVoiceRules()}`;
   }
 
   private buildGeneratePrompt(
@@ -520,7 +545,7 @@ Apply the request using edit/search-replace logic on the draft. Return ONLY the 
       prompt,
       targetCollege,
       targetCountry,
-      tone = 'authentic, first-person, specific',
+      tone = 'natural, conversational, student voice, specific and honest',
       wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       additionalInstructions,
     } = options;
@@ -538,7 +563,7 @@ Format as a structured document using markdown:
 - ## section headings, ### subsections
 - Clear paragraphs; use "- " bullet lists where helpful
 - For letters include Date/To/From lines at the top
-Return ONLY the document text — no preamble or code fences.`;
+Return ONLY the document text. No preamble or code fences.`;
 
     const typePrompts: Record<ApplicationDocumentType, string> = {
       PERSONAL_STATEMENT: `Write a compelling personal statement (~${wordLimit} words) for college admission. Tone: ${tone}. ${targetLine}
@@ -590,7 +615,7 @@ ${this.buildPersonalizationRules(profile)}
 
 User instruction: ${instruction}
 
-Apply the instruction to improve the draft. Return ONLY the revised full document text — no preamble. Keep ONE document type only.`;
+Apply the instruction to improve the draft. Return ONLY the revised full document text. No preamble. Keep ONE document type only.`;
   }
 
   private documentTitle(
@@ -628,7 +653,7 @@ Apply the instruction to improve the draft. Return ONLY the revised full documen
       prompt,
       targetCollege,
       targetCountry,
-      tone = 'authentic, first-person, specific',
+      tone = 'natural, conversational, student voice, specific and honest',
       wordLimit = type === 'LETTER_OF_RECOMMENDATION' ? 350 : type === 'CV' ? 700 : 300,
       additionalInstructions,
     } = options;

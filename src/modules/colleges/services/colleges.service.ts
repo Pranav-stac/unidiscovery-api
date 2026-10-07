@@ -946,7 +946,7 @@ Include collegeName when save/unsave.`,
         method: 'HEAD',
         redirect: 'follow',
         signal: AbortSignal.timeout(1200),
-        headers: { 'User-Agent': 'AI-Discovery-Admissions-Research/1.0' },
+        headers: { 'User-Agent': 'YUDI-AI-Admissions-Research/1.0' },
       });
       return response.ok;
     } catch {
