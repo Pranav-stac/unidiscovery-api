@@ -89,6 +89,22 @@ export class GeminiService {
     return result.response.text();
   }
 
+  /** Short, low-latency replies for interactive writing coach turns. */
+  async generateCoachText(prompt: string): Promise<string> {
+    if (!this.model) {
+      return 'AI is not configured. Please add GEMINI_API_KEY.';
+    }
+
+    const result = await this.model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.65,
+        maxOutputTokens: 220,
+      },
+    });
+    return result.response.text();
+  }
+
   async *streamGenerateText(prompt: string): AsyncGenerator<string> {
     if (!this.model) {
       yield 'AI is not configured. Please add GEMINI_API_KEY.';

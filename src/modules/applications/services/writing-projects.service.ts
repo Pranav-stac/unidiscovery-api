@@ -13,6 +13,11 @@ import {
   WRITING_TOOL_SLUGS,
 } from '../data/writing-tools.config';
 import {
+  COACH_READY_TAG,
+  coachPolicyForStep,
+  staticCoachOpener,
+} from '../data/coach-openers';
+import {
   anglesSystemPrompt,
   coachKickoffPrompt,
   coachSystemPrompt,
@@ -22,12 +27,18 @@ import {
   STORY_ANGLES_SCHEMA,
 } from '../data/writing-tool-prompts';
 
+type ConversationMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  stepKey?: string;
+};
+
 export type WritingProjectMeta = {
   writingTool: WritingToolSlug;
   workflowStep: number;
   stepKey: string;
   inputs: Record<string, unknown>;
-  conversation: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversation: ConversationMessage[];
   storyAngles?: Array<{
     id: string;
     theme: string;
@@ -41,6 +52,7 @@ export type WritingProjectMeta = {
   cvTemplate?: string;
   reviewChecklist?: string[];
   coachKickoffSteps?: string[];
+  coachReadySteps?: string[];
   reviewReport?: {
     items: Array<{ id: string; label: string; status: string; detail: string }>;
     summary: string;
@@ -72,6 +84,23 @@ function toDocumentMetadata(
   meta: WritingProjectMeta & { writingProject: true; createdAt?: string },
 ): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(meta)) as Prisma.InputJsonValue;
+}
+
+function stripReadyTag(text: string): { text: string; ready: boolean } {
+  const ready = text.includes(COACH_READY_TAG);
+  return {
+    text: text.replaceAll(COACH_READY_TAG, '').trim(),
+    ready,
+  };
+}
+
+function userTurnsInStep(conversation: ConversationMessage[], stepKey: string): number {
+  return conversation.filter((m) => m.role === 'user' && m.stepKey === stepKey).length;
+}
+
+function compactInputs(inputs: Record<string, unknown>): string {
+  const raw = JSON.stringify(inputs);
+  return raw.length > 2400 ? `${raw.slice(0, 2400)}…` : raw;
 }
 
 function defaultMeta(tool: WritingToolSlug): WritingProjectMeta {
@@ -192,43 +221,57 @@ export class WritingProjectsService {
     const trimmed = userMessage.trim();
     if (!trimmed) throw new BadRequestException('Message is required');
 
+    const stepKey = meta.stepKey;
     meta.conversation = [
       ...meta.conversation,
-      { role: 'user', content: trimmed },
+      { role: 'user', content: trimmed, stepKey },
     ];
 
-    let profileSnippet = '';
-    try {
-      const profile = await this.profileContext.getProfileOrThrow(userId);
-      profileSnippet = this.profileContext.buildContextText(profile);
-    } catch {
-      profileSnippet = 'No profile on file yet.';
+    const turnsInStep = userTurnsInStep(meta.conversation, stepKey);
+    const policy = coachPolicyForStep(stepKey);
+
+    let profileLine = '';
+    if (turnsInStep <= 1) {
+      try {
+        const profile = await this.profileContext.getProfileOrThrow(userId);
+        profileLine = `Profile (facts only): ${this.profileContext.buildContextText(profile).slice(0, 1200)}`;
+      } catch {
+        profileLine = 'Profile: not on file.';
+      }
     }
+
     const history = meta.conversation
-      .slice(-12)
+      .filter((m) => m.stepKey === stepKey || !m.stepKey)
+      .slice(-8)
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n');
 
-    const prompt = `${coachSystemPrompt(meta.writingTool, meta.stepKey)}
+    const prompt = `${coachSystemPrompt(meta.writingTool, stepKey)}
+${profileLine}
 
-Student profile context (do not invent beyond this):
-${profileSnippet}
+Inputs: ${compactInputs(meta.inputs)}
+User replies this step: ${turnsInStep} (min ${policy.minReplies}, recommend ${policy.recommendedReplies}, max ${policy.maxReplies})
 
-Project inputs:
-${JSON.stringify(meta.inputs)}
-
-Conversation:
+Conversation (this step):
 ${history}
 
-Respond as the coach with one primary question or brief guidance for this step.`;
+Respond with one primary question or brief guidance.`;
 
-    const reply =
-      (await this.gemini.generateText(prompt)) ||
-      'Thank you for sharing that. What is one specific moment from that experience that stands out to you?';
+    const rawReply =
+      (await this.gemini.generateCoachText(prompt)) ||
+      'Thank you for sharing that. What is one specific moment that stands out to you?';
 
-    meta.conversation.push({ role: 'assistant', content: reply });
+    const { text: reply, ready } = stripReadyTag(rawReply);
+    meta.coachReadySteps = meta.coachReadySteps ?? [];
+    if (ready || turnsInStep >= policy.recommendedReplies) {
+      if (!meta.coachReadySteps.includes(stepKey)) {
+        meta.coachReadySteps.push(stepKey);
+      }
+    }
 
-    await this.prisma.applicationDocument.update({
+    meta.conversation.push({ role: 'assistant', content: reply, stepKey });
+
+    const updated = await this.prisma.applicationDocument.update({
       where: { id },
       data: {
         metadata: toDocumentMetadata({
@@ -239,7 +282,7 @@ Respond as the coach with one primary question or brief guidance for this step.`
       },
     });
 
-    return { reply, project: await this.get(userId, id) };
+    return { reply, project: this.hydrate(updated) };
   }
 
   async coachKickoff(userId: string, id: string) {
@@ -248,36 +291,30 @@ Respond as the coach with one primary question or brief guidance for this step.`
     meta.coachKickoffSteps = meta.coachKickoffSteps ?? [];
 
     if (meta.coachKickoffSteps.includes(meta.stepKey)) {
-      return { project: await this.get(userId, id) };
+      return { project: doc };
     }
 
-    let profileSnippet = '';
-    try {
-      const profile = await this.profileContext.getProfileOrThrow(userId);
-      profileSnippet = this.profileContext.buildContextText(profile);
-    } catch {
-      profileSnippet = 'No profile on file yet.';
-    }
-
-    const prompt = `${coachKickoffPrompt(meta.writingTool, meta.stepKey)}
-
-Student profile context (do not invent beyond this):
-${profileSnippet}
-
-Project inputs:
-${JSON.stringify(meta.inputs)}
-
-Conversation so far:
-${meta.conversation.map((m) => `${m.role}: ${m.content}`).join('\n') || '(none)'}`;
-
-    const reply =
-      (await this.gemini.generateText(prompt)) ||
+    const stepKey = meta.stepKey;
+    let reply =
+      staticCoachOpener(meta.writingTool, stepKey) ??
       'What is one experience or idea you would like to explore in this piece?';
 
-    meta.conversation.push({ role: 'assistant', content: reply });
-    meta.coachKickoffSteps.push(meta.stepKey);
+    if (!staticCoachOpener(meta.writingTool, stepKey)) {
+      const prompt = `${coachKickoffPrompt(meta.writingTool, stepKey)}
 
-    await this.prisma.applicationDocument.update({
+Inputs: ${compactInputs(meta.inputs)}
+
+Ask exactly one opening question.`;
+      reply =
+        (await this.gemini.generateCoachText(prompt)) ||
+        'What is one experience or idea you would like to explore in this piece?';
+      reply = stripReadyTag(reply).text;
+    }
+
+    meta.conversation.push({ role: 'assistant', content: reply, stepKey });
+    meta.coachKickoffSteps.push(stepKey);
+
+    const updated = await this.prisma.applicationDocument.update({
       where: { id },
       data: {
         metadata: toDocumentMetadata({
@@ -288,7 +325,7 @@ ${meta.conversation.map((m) => `${m.role}: ${m.content}`).join('\n') || '(none)'
       },
     });
 
-    return { reply, project: await this.get(userId, id) };
+    return { reply, project: this.hydrate(updated) };
   }
 
   async coachAction(
@@ -326,7 +363,7 @@ ${userMessage}
 Respond with focused, actionable guidance. Do not invent facts or citations.`;
 
     const reply =
-      (await this.gemini.generateText(prompt)) ||
+      (await this.gemini.generateCoachText(prompt)) ||
       'Share a bit more detail and I can give targeted feedback.';
 
     meta.conversation.push({ role: 'assistant', content: reply });

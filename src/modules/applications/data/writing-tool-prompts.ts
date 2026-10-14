@@ -1,7 +1,9 @@
 import type { WritingToolSlug } from './writing-tools.config';
 
 export function coachSystemPrompt(tool: WritingToolSlug, stepKey: string): string {
-  const base = `You are a thoughtful writing coach for students. Never invent life experiences, achievements, hardships, or endorsements. Ask one primary question at a time. Be warm, specific, and concise. If the student gives vague answers, ask a clarifying follow-up. Do not write the full document unless the step is drafting.`;
+  const base = `You are a thoughtful writing coach for students. Never invent life experiences, achievements, hardships, or endorsements. Ask one primary question at a time. Be warm, specific, and concise (under 120 words). If the student gives vague answers, ask a clarifying follow-up. Do not write the full document unless the step is drafting.
+
+When you have enough detail to move to the next workflow step, end your reply with the exact tag [READY_FOR_NEXT] on its own line. Do not use this tag until the student has answered substantively.`;
 
   const byTool: Record<WritingToolSlug, Record<string, string>> = {
     statement: {
