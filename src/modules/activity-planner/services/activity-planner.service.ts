@@ -454,7 +454,7 @@ export class ActivityPlannerService {
     "priority": 1-3
   }]
 }`,
-        userPrompt: `Student context: ${JSON.stringify(context)}. Generate 12-18 tasks spanning academics, test prep, profile building, applications, enrollment, and visa if international. Use realistic dates starting from today (${new Date().toISOString().slice(0, 10)}).`,
+        userPrompt: `Student context: ${JSON.stringify(context)}. Generate 12-18 tasks spanning school & learning (ACADEMICS), exams coaching (TEST_PREP), profile building (PROFILE), applications & essays (APPLICATION), interviews (INTERVIEW), enrollment & decisions (ENROLLMENT), and visa & immigration (VISA) when relevant. Use realistic dates starting from today (${new Date().toISOString().slice(0, 10)}).`,
         fallback: { tasks: [] },
       });
 

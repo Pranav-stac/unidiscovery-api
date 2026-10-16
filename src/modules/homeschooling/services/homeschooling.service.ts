@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationEventType } from '@prisma/client';
@@ -60,6 +61,46 @@ function mergeHomeschoolPrefs(
 }
 
 export const PASS_SCORE = 70;
+
+type TestAttemptRecord = {
+  id: string;
+  score: number;
+  correctCount: number;
+  total: number;
+  mastered: boolean;
+  completedAt: string;
+  breakdown: Array<{
+    id: string;
+    correct: boolean;
+    selectedIndex: number | null;
+    correctIndex: number;
+    explanation: string;
+    focusArea?: string;
+    conceptTag?: string;
+    prompt?: string;
+  }>;
+};
+
+function readTestAttempts(raw: unknown): TestAttemptRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => item as Partial<TestAttemptRecord>)
+    .filter(
+      (item) =>
+        typeof item.id === 'string' &&
+        typeof item.score === 'number' &&
+        typeof item.completedAt === 'string',
+    )
+    .map((item) => ({
+      id: item.id as string,
+      score: item.score as number,
+      correctCount: typeof item.correctCount === 'number' ? item.correctCount : 0,
+      total: typeof item.total === 'number' ? item.total : 0,
+      mastered: Boolean(item.mastered),
+      completedAt: item.completedAt as string,
+      breakdown: Array.isArray(item.breakdown) ? (item.breakdown as TestAttemptRecord['breakdown']) : [],
+    }));
+}
 
 type LessonContent = {
   title: string;
@@ -353,6 +394,8 @@ export class HomeschoolingService {
       interactiveDone: Boolean(progress?.interactiveDone),
       hasPractice: Boolean(progress?.practiceCache),
       hasTest: Boolean(progress?.testCache),
+      testAttempts: readTestAttempts(progress?.testAttempts),
+      passScore: PASS_SCORE,
     };
   }
 
@@ -727,6 +770,18 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
       data.mastered = score >= PASS_SCORE;
       data.learnDone = true;
       breakdown = this.quizBreakdown(quiz.questions, input.testAnswers);
+      const correctCount = breakdown.filter((item) => item.correct).length;
+      const attempt: TestAttemptRecord = {
+        id: randomUUID(),
+        score,
+        correctCount,
+        total: quiz.questions.length,
+        mastered: score >= PASS_SCORE,
+        completedAt: new Date().toISOString(),
+        breakdown,
+      };
+      const prior = readTestAttempts(row.testAttempts);
+      data.testAttempts = [...prior, attempt].slice(-25);
     }
     const updated = await this.prisma.homeschoolProgress.update({
       where: { userId_unitId: { userId, unitId } },
@@ -756,6 +811,7 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
       mastered: updated.mastered,
       passScore: PASS_SCORE,
       breakdown,
+      testAttempts: readTestAttempts(updated.testAttempts),
     };
   }
 
