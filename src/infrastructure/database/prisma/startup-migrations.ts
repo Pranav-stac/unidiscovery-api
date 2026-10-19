@@ -115,6 +115,14 @@ async function ensureHomeschoolInteractiveSchema(prisma: PrismaClient, logger: L
     `ALTER TABLE homeschool_progress
      ADD COLUMN IF NOT EXISTS interactive_cache JSONB;`,
   );
+  await runStatement(
+    prisma,
+    logger,
+    'homeschool_progress.test_attempts',
+    `ALTER TABLE homeschool_progress
+     ADD COLUMN IF NOT EXISTS test_attempts JSONB NOT NULL DEFAULT '[]'::jsonb;`,
+    true,
+  );
 }
 
 export async function applyStartupMigrations(
