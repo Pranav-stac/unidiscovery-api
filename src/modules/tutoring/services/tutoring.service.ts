@@ -7,6 +7,8 @@ import { SAT_AUTHORED_BANK, satItemMetadata, type SatSection } from '../data/sat
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 import { pipeTextStreamToSse } from '../../../common/utils/sse-stream.util';
+import type { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
+import { appendScreenContext } from '../../../common/utils/chat-screen-context.util';
 import type { Response } from 'express';
 
 const OVERVIEW_CACHE_TTL = 60;
@@ -248,7 +250,7 @@ export class TutoringService {
     };
   }
 
-  async chat(userId: string, testType: TutoringTestType, message: string) {
+  async chat(userId: string, testType: TutoringTestType, message: string, screen?: ChatScreenContextDto) {
     const session = await this.prisma.tutoringSession.create({
       data: {
         userId,
@@ -256,7 +258,7 @@ export class TutoringService {
         messages: [{ role: 'user', content: message }] as Prisma.InputJsonValue,
       },
     });
-    const reply = await this.geminiService.generateText(this.coachPrompt(message));
+    const reply = await this.geminiService.generateText(this.coachPrompt(message, screen));
     await this.prisma.tutoringSession.update({
       where: { id: session.id },
       data: {
@@ -274,6 +276,7 @@ export class TutoringService {
     testType: TutoringTestType,
     message: string,
     res: Response,
+    screen?: ChatScreenContextDto,
   ) {
     const session = await this.prisma.tutoringSession.create({
       data: {
@@ -284,7 +287,7 @@ export class TutoringService {
     });
     await pipeTextStreamToSse(
       res,
-      this.geminiService.streamGenerateText(this.coachPrompt(message)),
+      this.geminiService.streamGenerateText(this.coachPrompt(message, screen)),
       async (reply) => {
         await this.prisma.tutoringSession.update({
           where: { id: session.id },
@@ -300,8 +303,11 @@ export class TutoringService {
     );
   }
 
-  private coachPrompt(message: string) {
-    return `You are a Digital SAT coach. Teach strategy and skills. Do not quote or recreate official College Board SAT questions.\n${message}`;
+  private coachPrompt(message: string, screen?: ChatScreenContextDto) {
+    return appendScreenContext(
+      `You are a Digital SAT coach. Teach strategy and skills using the on-screen question context when provided. Do not quote or recreate official College Board SAT questions verbatim.\n\nStudent message:\n${message}`,
+      screen,
+    );
   }
 
   private async completedResources(userId: string, testType: TutoringTestType) {

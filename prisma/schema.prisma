@@ -786,6 +786,7 @@ model HomeschoolProgress {
   practiceCache    Json?    @map("practice_cache")
   testCache        Json?    @map("test_cache")
   testAttempts     Json     @default("[]") @map("test_attempts")
+  practiceAttempts Json     @default("[]") @map("practice_attempts")
   chatHistory      Json     @default("[]") @map("chat_history")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")

@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ActivityType } from '@prisma/client';
-import { IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -17,6 +19,11 @@ class ActivityChatDto {
   @IsOptional() @IsString() type?: string;
   @IsOptional() @IsString() focusActivityId?: string;
   @IsOptional() @IsString() focusActivityTitle?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChatScreenContextDto)
+  screen?: ChatScreenContextDto;
 }
 
 @ApiTags('Activities')

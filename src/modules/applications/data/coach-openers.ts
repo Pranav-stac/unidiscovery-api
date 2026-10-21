@@ -41,7 +41,7 @@ export type CoachStepPolicy = {
 };
 
 export const COACH_STEP_POLICY: Record<string, CoachStepPolicy> = {
-  discover: { minReplies: 2, recommendedReplies: 4, maxReplies: 8 },
+  discover: { minReplies: 1, recommendedReplies: 3, maxReplies: 8 },
   thesis: { minReplies: 1, recommendedReplies: 3, maxReplies: 6 },
   criteria: { minReplies: 2, recommendedReplies: 4, maxReplies: 8 },
   themes: { minReplies: 1, recommendedReplies: 3, maxReplies: 6 },

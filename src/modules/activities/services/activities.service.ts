@@ -14,6 +14,7 @@ import {
   type OpportunityMatch,
 } from '../utils/opportunity-score.util';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import type { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
 
 type ActivityChatPlan = {
   intent: 'answer' | 'search' | 'save' | 'plan';
@@ -28,6 +29,7 @@ export interface ActivityChatOptions {
   type?: string;
   focusActivityId?: string;
   focusActivityTitle?: string;
+  screen?: ChatScreenContextDto;
 }
 
 const LIST_CACHE_TTL = 180;
@@ -461,6 +463,7 @@ Write answer in JSON:
           search: ctx.options.search,
           typeFilter: ctx.options.type,
         },
+        screen: ctx.options.screen,
       }),
       schemaDescription:
         '{ intent: "answer"|"search"|"save"|"plan", answer: string, search?: { query?: string, type?: string }, activityTitle?: string }',

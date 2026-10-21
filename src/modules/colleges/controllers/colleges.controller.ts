@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -18,7 +19,9 @@ import {
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { CollegesService } from '../services/colleges.service';
@@ -60,6 +63,11 @@ export class CollegeChatDto {
   @IsOptional() @IsString() budget?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) priorities?: string[];
   @IsOptional() @IsString() focusCollegeName?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChatScreenContextDto)
+  screen?: ChatScreenContextDto;
 }
 
 @ApiTags('Colleges')

@@ -613,6 +613,7 @@ Include collegeName when save/unsave.`,
         student: this.profileContext.buildContextText(ctx.profile),
         shortlist: ctx.shortlist,
         sourceLinks: ctx.sources.slice(0, 16),
+        screen: ctx.dto.screen,
         currentSearch: {
           countries: ctx.dto.countries,
           courses: ctx.dto.courses,

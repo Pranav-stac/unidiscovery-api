@@ -35,6 +35,8 @@ import {
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { CacheService } from '../../../infrastructure/cache/cache.service';
 import { pipeTextStreamToSse } from '../../../common/utils/sse-stream.util';
+import type { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
+import { appendScreenContext } from '../../../common/utils/chat-screen-context.util';
 import type { Response } from 'express';
 
 const JOURNEY_CACHE_TTL = 120;
@@ -395,6 +397,7 @@ export class HomeschoolingService {
       hasPractice: Boolean(progress?.practiceCache),
       hasTest: Boolean(progress?.testCache),
       testAttempts: readTestAttempts(progress?.testAttempts),
+      practiceAttempts: readTestAttempts(progress?.practiceAttempts),
       passScore: PASS_SCORE,
     };
   }
@@ -760,8 +763,21 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
     }
     if (input.practiceAnswers) {
       const quiz = (row.practiceCache ?? { questions: [] }) as QuizSet;
-      data.practiceScore = this.score(quiz.questions, input.practiceAnswers);
+      const score = this.score(quiz.questions, input.practiceAnswers);
+      data.practiceScore = score;
       breakdown = this.quizBreakdown(quiz.questions, input.practiceAnswers);
+      const correctCount = breakdown.filter((item) => item.correct).length;
+      const attempt: TestAttemptRecord = {
+        id: randomUUID(),
+        score,
+        correctCount,
+        total: quiz.questions.length,
+        mastered: false,
+        completedAt: new Date().toISOString(),
+        breakdown,
+      };
+      const prior = readTestAttempts(row.practiceAttempts);
+      data.practiceAttempts = [...prior, attempt].slice(-25);
     }
     if (input.testAnswers) {
       const quiz = (row.testCache ?? { questions: [] }) as QuizSet;
@@ -812,14 +828,96 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
       passScore: PASS_SCORE,
       breakdown,
       testAttempts: readTestAttempts(updated.testAttempts),
+      practiceAttempts: readTestAttempts(updated.practiceAttempts),
     };
   }
 
-  async chat(userId: string, unitId: string, message: string) {
+  private lessonExcerpt(lesson: LessonContent | null, max = 9000): string {
+    if (!lesson) return '';
+    const parts = [lesson.summary];
+    for (const section of lesson.sections ?? []) {
+      parts.push(`${section.heading}\n${section.body}`);
+      if (section.keyPoints?.length) {
+        parts.push(section.keyPoints.map((p) => `• ${p}`).join('\n'));
+      }
+    }
+    if (lesson.recap?.length) {
+      parts.push(`Recap:\n${lesson.recap.map((r) => `• ${r}`).join('\n')}`);
+    }
+    return parts.join('\n\n').slice(0, max);
+  }
+
+  private interactiveExcerpt(interactive: InteractiveLearningContent | null, max = 9000): string {
+    if (!interactive) return '';
+    const parts = [
+      interactive.title,
+      interactive.subtitle,
+      interactive.opening,
+      ...(interactive.fundamentals ?? []).map((f) => `Fundamental: ${f}`),
+    ];
+    for (const concept of interactive.concepts ?? []) {
+      parts.push(
+        [concept.title, concept.hook, concept.explanation, concept.fundamental].filter(Boolean).join('\n'),
+      );
+    }
+    if (interactive.recap?.length) {
+      parts.push(`Recap:\n${interactive.recap.map((r) => `• ${r}`).join('\n')}`);
+    }
+    return parts.join('\n\n').slice(0, max);
+  }
+
+  private questionFromCache(
+    row: { practiceCache: unknown; testCache: unknown },
+    phase: string | undefined,
+    questionIndex: number | undefined,
+  ): string {
+    if (questionIndex == null || questionIndex < 0) return '';
+    const kind = phase === 'test' ? 'test' : 'practice';
+    const cached = (kind === 'test' ? row.testCache : row.practiceCache) as QuizSet | null;
+    const q = cached?.questions?.[questionIndex];
+    if (!q) return '';
+    const options = q.options.map((opt, i) => `${String.fromCharCode(65 + i)}. ${opt}`).join('\n');
+    return `${q.prompt}\n\nOptions:\n${options}`;
+  }
+
+  private mergeScreenContext(
+    row: {
+      practiceCache: unknown;
+      testCache: unknown;
+    },
+    lesson: LessonContent | null,
+    interactive: InteractiveLearningContent | null,
+    client?: ChatScreenContextDto,
+  ): ChatScreenContextDto | undefined {
+    const serverText = [this.lessonExcerpt(lesson), this.interactiveExcerpt(interactive)]
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+    const serverQuestion = this.questionFromCache(row, client?.phase, client?.questionIndex);
+    const visibleText = [client?.visibleText, serverText].filter(Boolean).join('\n\n---\n\n').slice(0, 12000);
+    const currentQuestion = client?.currentQuestion || serverQuestion || undefined;
+    if (
+      !visibleText &&
+      !currentQuestion &&
+      !client?.phase &&
+      !client?.focusTopic &&
+      !client?.recentMessages?.length
+    ) {
+      return client;
+    }
+    return {
+      ...client,
+      visibleText: visibleText || client?.visibleText,
+      currentQuestion,
+    };
+  }
+
+  async chat(userId: string, unitId: string, message: string, screen?: ChatScreenContextDto) {
     const context = await this.unitContext(userId, unitId);
     const row = await this.progress(userId, unitId);
     const history = Array.isArray(row.chatHistory) ? (row.chatHistory as ChatTurn[]) : [];
     const lesson = (row.lessonCache ?? null) as LessonContent | null;
+    const interactive = (row.interactiveCache ?? null) as InteractiveLearningContent | null;
+    const screenContext = this.mergeScreenContext(row, lesson, interactive, screen);
     const result = await this.geminiService.generateStructured<{
       intent: 'explain' | 'hint' | 'quiz' | 'next' | 'answer';
       answer: string;
@@ -829,22 +927,25 @@ Use 2-3 sections max. Include one worked example tied to the missed question.`,
 Help them learn, practice, or take the next step. Never invent other chapters.
 If they want more questions, return extraQuestions as MCQs.
 Keep answer short and clear for Class ${context.grade}.`,
-      userPrompt: JSON.stringify({
-        message,
-        chapter: context.unit.title,
-        subject: context.subject.name,
-        board: context.boardLabel,
-        grade: context.grade,
-        lessonSummary: lesson?.summary,
-        recap: lesson?.recap,
-        progress: {
-          learnDone: row.learnDone,
-          practiceScore: row.practiceScore,
-          testScore: row.testScore,
-          mastered: row.mastered,
-        },
-        recentChat: history.slice(-6),
-      }),
+      userPrompt: appendScreenContext(
+        JSON.stringify({
+          message,
+          chapter: context.unit.title,
+          subject: context.subject.name,
+          board: context.boardLabel,
+          grade: context.grade,
+          lessonSummary: lesson?.summary,
+          recap: lesson?.recap,
+          progress: {
+            learnDone: row.learnDone,
+            practiceScore: row.practiceScore,
+            testScore: row.testScore,
+            mastered: row.mastered,
+          },
+          recentChat: history.slice(-6),
+        }),
+        screenContext,
+      ),
       schemaDescription:
         '{ intent: "explain"|"hint"|"quiz"|"next"|"answer", answer: string, extraQuestions?: [{ id, prompt, options, answerIndex, hint, explanation }] }',
       fallback: {
@@ -874,12 +975,16 @@ Keep answer short and clear for Class ${context.grade}.`,
     unitId: string,
     message: string,
     res: Response,
+    screen?: ChatScreenContextDto,
   ) {
     const context = await this.unitContext(userId, unitId);
     const row = await this.progress(userId, unitId);
     const history = Array.isArray(row.chatHistory) ? (row.chatHistory as ChatTurn[]) : [];
     const lesson = (row.lessonCache ?? null) as LessonContent | null;
-    const prompt = `You are the student's personal school helper for this exact chapter.
+    const interactive = (row.interactiveCache ?? null) as InteractiveLearningContent | null;
+    const screenContext = this.mergeScreenContext(row, lesson, interactive, screen);
+    const prompt = appendScreenContext(
+      `You are the student's personal school helper for this exact chapter.
 Help them learn, practice, or take the next step. Never invent other chapters.
 Keep answer short and clear for Class ${context.grade}.
 
@@ -887,11 +992,13 @@ Chapter: ${context.unit.title}
 Subject: ${context.subject.name}
 Board: ${context.boardLabel}
 Lesson summary: ${lesson?.summary ?? 'n/a'}
-Recap: ${lesson?.recap ?? 'n/a'}
+Recap: ${lesson?.recap?.join('; ') ?? 'n/a'}
 Progress: learn=${row.learnDone}, practice=${row.practiceScore ?? 'n/a'}, test=${row.testScore ?? 'n/a'}, mastered=${row.mastered}
 Recent chat: ${JSON.stringify(history.slice(-4))}
 
-Student question: ${message}`;
+Student question: ${message}`,
+      screenContext,
+    );
 
     await pipeTextStreamToSse(
       res,

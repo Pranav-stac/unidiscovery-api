@@ -11,7 +11,9 @@ import {
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { HomeschoolingService } from '../services/homeschooling.service';
@@ -32,6 +34,11 @@ class ProgressDto {
 
 class ChatDto {
   @IsString() message!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChatScreenContextDto)
+  screen?: ChatScreenContextDto;
 }
 
 class ReviewConceptDto {
@@ -160,7 +167,7 @@ export class HomeschoolingController {
     @Param('unitId') unitId: string,
     @Body() dto: ChatDto,
   ) {
-    return this.homeschoolingService.chat(user.id, unitId, dto.message);
+    return this.homeschoolingService.chat(user.id, unitId, dto.message, dto.screen);
   }
 
   @Post('units/:unitId/chat/stream')
@@ -175,6 +182,7 @@ export class HomeschoolingController {
       unitId,
       dto.message,
       res,
+      dto.screen,
     );
   }
 }

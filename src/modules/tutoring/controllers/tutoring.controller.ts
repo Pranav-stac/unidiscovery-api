@@ -2,7 +2,9 @@ import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TutoringTestType } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ChatScreenContextDto } from '../../../common/dto/chat-screen-context.dto';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { TutoringService } from '../services/tutoring.service';
@@ -21,6 +23,11 @@ class ChatDto {
 
   @IsString()
   message!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChatScreenContextDto)
+  screen?: ChatScreenContextDto;
 }
 
 class ResourceDto {
@@ -93,7 +100,7 @@ export class TutoringController {
 
   @Post('chat')
   chat(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatDto) {
-    return this.tutoringService.chat(user.id, dto.testType, dto.message);
+    return this.tutoringService.chat(user.id, dto.testType, dto.message, dto.screen);
   }
 
   @Post('chat/stream')
@@ -107,6 +114,7 @@ export class TutoringController {
       dto.testType,
       dto.message,
       res,
+      dto.screen,
     );
   }
 }

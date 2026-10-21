@@ -26,6 +26,7 @@ import {
   REVIEW_CHECKLIST_SCHEMA,
   STORY_ANGLES_SCHEMA,
 } from '../data/writing-tool-prompts';
+import { discoverPromptForTheme } from '../data/statement-themes';
 
 type ConversationMessage = {
   role: 'user' | 'assistant';
@@ -215,7 +216,12 @@ export class WritingProjectsService {
     return this.hydrate(updated);
   }
 
-  async coachTurn(userId: string, id: string, userMessage: string) {
+  async coachTurn(
+    userId: string,
+    id: string,
+    userMessage: string,
+    clientContext?: { draftExcerpt?: string; inputs?: Record<string, unknown> },
+  ) {
     const doc = await this.get(userId, id);
     const meta = doc.projectMeta ?? defaultMeta(doc.toolSlug!);
     const trimmed = userMessage.trim();
@@ -246,10 +252,19 @@ export class WritingProjectsService {
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n');
 
+    const inputsForPrompt = {
+      ...meta.inputs,
+      ...(clientContext?.inputs ?? {}),
+    };
+    const draftLine = clientContext?.draftExcerpt?.trim()
+      ? `\nDraft on screen (excerpt):\n${clientContext.draftExcerpt.trim().slice(0, 8000)}`
+      : '';
+
     const prompt = `${coachSystemPrompt(meta.writingTool, stepKey)}
 ${profileLine}
 
-Inputs: ${compactInputs(meta.inputs)}
+Inputs: ${compactInputs(inputsForPrompt)}
+Current workflow step: ${stepKey}${draftLine}
 User replies this step: ${turnsInStep} (min ${policy.minReplies}, recommend ${policy.recommendedReplies}, max ${policy.maxReplies})
 
 Conversation (this step):
@@ -291,7 +306,10 @@ Respond with one primary question or brief guidance.`;
     meta.coachKickoffSteps = meta.coachKickoffSteps ?? [];
 
     if (meta.coachKickoffSteps.includes(meta.stepKey)) {
-      return { project: doc };
+      const last = [...meta.conversation]
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.stepKey === meta.stepKey);
+      return { reply: last?.content ?? '', project: doc };
     }
 
     const stepKey = meta.stepKey;
@@ -299,7 +317,12 @@ Respond with one primary question or brief guidance.`;
       staticCoachOpener(meta.writingTool, stepKey) ??
       'What is one experience or idea you would like to explore in this piece?';
 
-    if (!staticCoachOpener(meta.writingTool, stepKey)) {
+    if (meta.writingTool === 'statement' && stepKey === 'discover') {
+      const theme = meta.inputs?.statementTheme;
+      if (typeof theme === 'string' && theme.trim()) {
+        reply = discoverPromptForTheme(theme);
+      }
+    } else if (!staticCoachOpener(meta.writingTool, stepKey)) {
       const prompt = `${coachKickoffPrompt(meta.writingTool, stepKey)}
 
 Inputs: ${compactInputs(meta.inputs)}

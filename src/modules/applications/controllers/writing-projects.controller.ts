@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { WritingToolSlug } from '../data/writing-tools.config';
@@ -49,6 +49,15 @@ class UpdateWritingProjectDto {
 class CoachMessageDto {
   @IsString()
   message!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12000)
+  draftExcerpt?: string;
+
+  @IsOptional()
+  @IsObject()
+  inputs?: Record<string, unknown>;
 }
 
 class CoachActionDto {
@@ -96,7 +105,10 @@ export class WritingProjectsController {
     @Param('id') id: string,
     @Body() dto: CoachMessageDto,
   ) {
-    return this.writingProjects.coachTurn(user.id, id, dto.message);
+    return this.writingProjects.coachTurn(user.id, id, dto.message, {
+      draftExcerpt: dto.draftExcerpt,
+      inputs: dto.inputs,
+    });
   }
 
   @Post(':id/coach/kickoff')
