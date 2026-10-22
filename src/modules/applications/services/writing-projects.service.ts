@@ -27,6 +27,10 @@ import {
   STORY_ANGLES_SCHEMA,
 } from '../data/writing-tool-prompts';
 import { discoverPromptForTheme } from '../data/statement-themes';
+import {
+  ensureCoachFollowUpQuestion,
+  shouldMarkCoachStepReady,
+} from '../data/coach-reply-quality';
 
 type ConversationMessage = {
   role: 'user' | 'assistant';
@@ -270,18 +274,27 @@ User replies this step: ${turnsInStep} (min ${policy.minReplies}, recommend ${po
 Conversation (this step):
 ${history}
 
-Respond with one primary question or brief guidance.`;
+Respond with encouragement plus exactly one follow-up question ending with "?".`;
 
     const rawReply =
       (await this.gemini.generateCoachText(prompt)) ||
       'Thank you for sharing that. What is one specific moment that stands out to you?';
 
-    const { text: reply, ready } = stripReadyTag(rawReply);
+    const { text: stripped, ready: modelReady } = stripReadyTag(rawReply);
+    const { text: reply, injectedQuestion } = ensureCoachFollowUpQuestion(
+      stripped,
+      meta.writingTool,
+      stepKey,
+      turnsInStep,
+      policy,
+    );
+
     meta.coachReadySteps = meta.coachReadySteps ?? [];
-    if (ready || turnsInStep >= policy.recommendedReplies) {
-      if (!meta.coachReadySteps.includes(stepKey)) {
-        meta.coachReadySteps.push(stepKey);
-      }
+    if (
+      shouldMarkCoachStepReady(modelReady, turnsInStep, policy, injectedQuestion) &&
+      !meta.coachReadySteps.includes(stepKey)
+    ) {
+      meta.coachReadySteps.push(stepKey);
     }
 
     meta.conversation.push({ role: 'assistant', content: reply, stepKey });

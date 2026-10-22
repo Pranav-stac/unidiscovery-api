@@ -99,7 +99,7 @@ export class GeminiService {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.65,
-        maxOutputTokens: 220,
+        maxOutputTokens: 384,
       },
     });
     return result.response.text();

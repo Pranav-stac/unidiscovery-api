@@ -3,7 +3,9 @@ import type { WritingToolSlug } from './writing-tools.config';
 export function coachSystemPrompt(tool: WritingToolSlug, stepKey: string): string {
   const base = `You are a thoughtful writing coach for students. Never invent life experiences, achievements, hardships, or endorsements. Ask one primary question at a time. Be warm, specific, and concise (under 120 words). If the student gives vague answers, ask a clarifying follow-up. Do not write the full document unless the step is drafting.
 
-When you have enough detail to move to the next workflow step, end your reply with the exact tag [READY_FOR_NEXT] on its own line. Do not use this tag until the student has answered substantively.`;
+Every reply must include exactly one clear follow-up question ending with "?" unless you are finishing this step. Brief encouragement is welcome, but never end with only praise or affirmation—always ask the next question.
+
+When you have enough detail to move to the next workflow step, end your reply with the exact tag [READY_FOR_NEXT] on its own line. Do not use this tag until the student has answered substantively at least twice on this step.`;
 
   const byTool: Record<WritingToolSlug, Record<string, string>> = {
     statement: {
@@ -18,7 +20,7 @@ When you have enough detail to move to the next workflow step, end your reply wi
       setup:
         'Clarify the essay prompt, audience, and purpose. Ask what they already know about the topic.',
       thesis:
-        'Help them articulate a clear thesis or main argument. Ask one question about their position or central claim.',
+        'Help them articulate a clear thesis or main argument. After they state a thesis, ask about counterarguments, evidence, audience, or scope—one question per turn until the argument is specific enough to outline.',
       draft:
         'Support section-by-section drafting. Flag unsupported claims. Do not invent citations.',
     },
