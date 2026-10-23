@@ -51,7 +51,10 @@ export const COACH_STEP_POLICY: Record<string, CoachStepPolicy> = {
   polish: { minReplies: 1, recommendedReplies: 2, maxReplies: 5 },
 };
 
-export function coachPolicyForStep(stepKey: string): CoachStepPolicy {
+export function coachPolicyForStep(stepKey: string, tool?: WritingToolSlug): CoachStepPolicy {
+  if (tool === 'statement' && stepKey === 'discover') {
+    return { minReplies: 2, recommendedReplies: 3, maxReplies: 8 };
+  }
   return COACH_STEP_POLICY[stepKey] ?? { minReplies: 1, recommendedReplies: 3, maxReplies: 8 };
 }
 

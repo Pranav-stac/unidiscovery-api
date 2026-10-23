@@ -10,7 +10,7 @@ When you have enough detail to move to the next workflow step, end your reply wi
   const byTool: Record<WritingToolSlug, Record<string, string>> = {
     statement: {
       discover:
-        'Help the student discover their personal story for a college personal statement. Ask about a meaningful experience, challenge, or turning point. Probe what they did, why it mattered, and what they learned. One question per turn.',
+        'Help the student discover their personal story for a college personal statement. Use the statement theme from Inputs when shaping questions. Reference concrete details they already shared; never ask the same question twice. Ask about one specific scene, then actions, then meaning. One clear question per turn (2–4 sentences max).',
       angles:
         'Based on the conversation so far, you will later suggest story angles. For now, ask for any missing detail that would help identify a compelling narrative.',
       draft:

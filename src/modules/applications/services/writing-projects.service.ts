@@ -238,7 +238,7 @@ export class WritingProjectsService {
     ];
 
     const turnsInStep = userTurnsInStep(meta.conversation, stepKey);
-    const policy = coachPolicyForStep(stepKey);
+    const policy = coachPolicyForStep(stepKey, meta.writingTool);
 
     let profileLine = '';
     if (turnsInStep <= 1) {
@@ -281,12 +281,19 @@ Respond with encouragement plus exactly one follow-up question ending with "?".`
       'Thank you for sharing that. What is one specific moment that stands out to you?';
 
     const { text: stripped, ready: modelReady } = stripReadyTag(rawReply);
+    const followUpCtx = {
+      topic: String(inputsForPrompt.topic ?? ''),
+      audience: String(inputsForPrompt.audience ?? ''),
+      lastUserLine: trimmed,
+      statementTheme: String(inputsForPrompt.statementTheme ?? ''),
+    };
     const { text: reply, injectedQuestion } = ensureCoachFollowUpQuestion(
       stripped,
       meta.writingTool,
       stepKey,
       turnsInStep,
       policy,
+      followUpCtx,
     );
 
     meta.coachReadySteps = meta.coachReadySteps ?? [];

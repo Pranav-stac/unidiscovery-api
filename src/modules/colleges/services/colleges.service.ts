@@ -341,8 +341,19 @@ reasons and concerns must be string arrays.`,
       }))
       .slice(0, count);
 
+    const profileForScoring =
+      criteria.budget?.trim()
+        ? ({
+            ...profile,
+            goals: {
+              ...((profile.goals ?? {}) as Record<string, unknown>),
+              budget: criteria.budget.trim(),
+            },
+          } as StudentProfile)
+        : profile;
+
     const prepared = await Promise.all(
-      valid.map((item) => this.persistResearchedCollege(item, profile)),
+      valid.map((item) => this.persistResearchedCollege(item, profileForScoring)),
     );
 
     const ready = prepared.filter(

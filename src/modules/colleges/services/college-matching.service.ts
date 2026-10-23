@@ -32,13 +32,17 @@ export class CollegeMatchingService {
     const meta = this.normalizeMetadata(college.metadata);
     const transcript = (profile.transcriptData ?? {}) as { cgpa?: number };
     const goals = (profile.goals ?? {}) as Record<string, unknown>;
+    const streamFromGoals =
+      typeof goals.streamPreference === 'string'
+        ? goals.streamPreference
+        : undefined;
     const studentCgpa =
       transcript.cgpa ??
       (profile.percentage && profile.percentage <= 10
         ? profile.percentage
         : undefined);
 
-    const fieldFit = this.scoreFieldFit(profile, college, meta);
+    const fieldFit = this.scoreFieldFit(profile, college, meta, streamFromGoals);
     const countryFit = this.scoreCountryFit(profile, college);
     const academicFit = this.scoreAcademicFit(
       studentCgpa,
@@ -93,8 +97,9 @@ export class CollegeMatchingService {
     profile: StudentProfile,
     college: CollegeMatchInput,
     meta: CollegeMetadata,
+    streamFromGoals?: string,
   ): number {
-    const stream = (profile.stream ?? '').toLowerCase();
+    const stream = (profile.stream ?? streamFromGoals ?? '').toLowerCase();
     const targetDegree = (profile.targetDegree ?? '').toLowerCase();
     const field = (college.field ?? '').toLowerCase();
     const tokens = [
