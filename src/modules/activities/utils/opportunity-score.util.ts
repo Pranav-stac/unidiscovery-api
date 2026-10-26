@@ -18,6 +18,7 @@ export type OpportunityDetails = {
   openToInternational?: boolean;
   highlySelective?: boolean;
   websiteUrl?: string;
+  applicationUrl?: string;
   logoUrl?: string;
   seasons?: string;
   tags?: string[];
@@ -106,6 +107,13 @@ export function opportunityDetails(metadata: unknown): OpportunityDetails {
     openToInternational: Boolean(meta.openToInternational),
     highlySelective: Boolean(meta.highlySelective),
     websiteUrl: meta.websiteUrl ? String(meta.websiteUrl) : undefined,
+    applicationUrl: meta.applicationUrl
+      ? String(meta.applicationUrl)
+      : meta.applyUrl
+        ? String(meta.applyUrl)
+        : meta.registrationUrl
+          ? String(meta.registrationUrl)
+          : undefined,
     logoUrl: meta.logoUrl ? String(meta.logoUrl) : undefined,
     seasons: meta.seasons ? String(meta.seasons) : undefined,
     tags,
@@ -254,7 +262,7 @@ export function presentActivity<T extends Activity>(
     gradeMin: activity.gradeMin,
     gradeMax: activity.gradeMax,
     interests: activity.interests,
-    url: activity.url ?? details.websiteUrl ?? null,
+    url: activity.url ?? details.applicationUrl ?? details.websiteUrl ?? null,
     details,
     matchScore: match?.score ?? null,
     matchReasons: match?.reasons ?? [],

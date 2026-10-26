@@ -281,7 +281,7 @@ Student: ${this.profileContext.buildContextText(profile)}`,
         : ({ score: 50, eligible: true, reasons: [] } as OpportunityMatch),
     }));
     return scored
-      .filter((item) => item.match.eligible && (!relevantOnly || !profile || item.match.score >= 28))
+      .filter((item) => item.match.eligible && (!relevantOnly || !profile || item.match.score >= 40))
       .sort((a, b) => b.match.score - a.match.score || a.activity.title.localeCompare(b.activity.title));
   }
 
