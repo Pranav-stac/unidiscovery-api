@@ -37,6 +37,7 @@ export class CollegeResearchDto {
   @ArrayMaxSize(12)
   @IsString({ each: true })
   priorities?: string[];
+  @IsOptional() @IsInt() @Min(1) @Max(12) grade?: number;
   @IsOptional() @IsInt() @Min(3) @Max(8) count?: number;
   @IsOptional()
   @IsArray()
@@ -61,6 +62,7 @@ export class CollegeChatDto {
   @IsOptional() @IsArray() @IsString({ each: true }) courses?: string[];
   @IsOptional() @IsArray() @IsString({ each: true }) degrees?: string[];
   @IsOptional() @IsString() budget?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(12) grade?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) priorities?: string[];
   @IsOptional() @IsString() focusCollegeName?: string;
 
