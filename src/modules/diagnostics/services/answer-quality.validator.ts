@@ -244,8 +244,10 @@ export function isGibberishText(
     }
   }
 
-  // 7. Character entropy / uniqueness ratio
-  if (compact.length >= 8) {
+  // 7. Character entropy / uniqueness ratio — only for short single-blob answers.
+  // Multi-word replies repeat common letters (i, a, t, e) and false-positive here.
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  if (compact.length >= 8 && wordCount <= 2) {
     const uniqueChars = new Set(compact).size;
     const uniquenessRatio = uniqueChars / compact.length;
     if (compact.length >= 10 && uniquenessRatio < 0.32) {

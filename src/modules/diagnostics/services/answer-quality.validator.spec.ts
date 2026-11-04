@@ -30,6 +30,11 @@ describe('answer-quality.validator', () => {
     expect(isGibberishText('test test test')).toBe(true);
     expect(isGibberishText('blah blah blah blah')).toBe(true);
     expect(isGibberishText('I enjoy building robots and coding games')).toBe(false);
+    expect(
+      isGibberishText(
+        'i participate in hackthons compitions and tech confere',
+      ),
+    ).toBe(false);
   });
 
   it('rejects sessions with placeholder answers', () => {
